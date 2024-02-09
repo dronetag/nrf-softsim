@@ -11,7 +11,6 @@
 #include "provision.h"
 #include "profile.h"
 
-// LOG_MODULE_REGISTER(softsim_fs, 4);
 LOG_MODULE_REGISTER(softsim_fs, CONFIG_SOFTSIM_LOG_LEVEL);
 #define DIR_ID (1UL)
 
@@ -258,21 +257,6 @@ size_t port_fread(void *ptr, size_t size, size_t nmemb, port_FILE fp) {
   }
   /* Return number of elements read */
   return rc/size;
-}
-
-
-char *port_fgets(char *str, int n, port_FILE fp) {
-  // OK to just return all data in a file.
-  //
-  // Debug build uses an internal hex to bytes conversion.
-
-  size_t bytes_read = port_fread(str, 1, n, fp);
-
-  if (bytes_read == 0) {
-    return NULL;
-  }
-
-  return str;
 }
 
 int port_fclose(port_FILE fp) {

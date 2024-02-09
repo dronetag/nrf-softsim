@@ -5,7 +5,6 @@
 
 typedef void *port_FILE;
 size_t port_fread(void *ptr, size_t size, size_t nmemb, port_FILE fp);
-char *port_fgets(char *str, int n, port_FILE fp);
 int port_fclose(port_FILE);
 port_FILE port_fopen(char *path, char *mode);
 int port_fseek(port_FILE fp, long offset, int whence);

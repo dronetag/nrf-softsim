@@ -259,27 +259,6 @@ void read_nvs_to_cache(struct cache_entry *entry) {
   entry->_b_dirty = 0;
 }
 
-char *port_fgets(char *str, int n, port_FILE fp) {
-  struct cache_entry *entry = (struct cache_entry *)fp;
-
-  if (!entry) {
-    return NULL;
-  }
-
-  if (entry->_p >= entry->_l) {  // no more data
-    return NULL;
-  }
-
-  int idx = 0;  // dest idx
-
-  while (entry->_p < entry->_l && idx < n - 1 && entry->buf[entry->_p] != '\0' && entry->buf[entry->_p] != '\n') {
-    str[idx++] = entry->buf[entry->_p++];
-  }
-
-  str[idx] = '\0';
-  return str;
-}
-
 int port_fclose(port_FILE fp) {
   struct cache_entry *entry = (struct cache_entry *)fp;
 
