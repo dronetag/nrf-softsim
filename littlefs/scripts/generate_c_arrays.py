@@ -2,9 +2,7 @@ import os
 import re
 
 HEADER  = """
-#include <stdint.h>
-typedef struct {const char *name; const uint8_t *data; const uint32_t size;} file_t;
-typedef struct {const char *name;} dir_t;
+#include "ss_static_files.h"
 """
 
 
@@ -15,29 +13,42 @@ def to_c_array(path='files', out_path='ss_static_files.c'):
 
     files, directories = get_dirs_and_files(path)    
 
-    s += 'const dir_t dirs[] = {\n'  
+    s += 'const sf_dir_t onomondo_sf_dirs_arr[] = {\n'  
     ds = []
     for d in directories:
         if d == '':
             continue    
         ds.append( f'{{.name = "{d}"}}')
     s += ', \n'.join(ds) + '\n};\n' 
-      
-
-    s += 'const file_t files[] = {\n'
-    fs = []
+    
     for f in files:
+        c_f_name = (f).replace("/", "_").replace(".", "_")
+        s += f"static const uint8_t {c_f_name}[] = \n"
         with open(path + f, 'r') as file:
             data = file.read()
             data_len = len(data)/2
             # get it in chunks of 2
             data = re.findall('..', data)
             data = ','.join([f'0x{byte}' for byte in data])
-            fs.append(f'{{.name = "{f}", .data = {{{data}}}, .size = {int(data_len)}}}')
+            s += f'{{{data}}};\n'
+
+    s += 'const sf_file_t onomondo_sf_files_arr[] = {\n'
+    fs = []
+    for f in files:
+        c_f_name = (f).replace("/", "_").replace(".", "_")
+        with open(path + f, 'r') as file:
+            data = file.read()
+            data_len = len(data)/2
+            # get it in chunks of 2
+            data = re.findall('..', data)
+            data = ','.join([f'0x{byte}' for byte in data])
+            fs.append(f'{{.name = "{f}", .data = {c_f_name}, .size = sizeof({c_f_name})}}')
     s += ', \n'.join(fs) + '\n};\n'
     
-    s += f'const uint32_t num_files = {len(files)};\n'
-    s += f'const uint32_t num_dirs = {len(directories)};\n'
+    s += f'const uint32_t onomondo_sf_files_len = {len(files)};\n'
+    s += f'const uint32_t onomondo_sf_dirs_len = {len(directories)};\n'
+    s += f'const sf_file_t *onomondo_sf_files = onomondo_sf_files_arr;\n'
+    s += f'const sf_dir_t *onomondo_sf_dirs = onomondo_sf_dirs_arr;\n'
 
     with open(out_path, 'w') as file: 
         file.write(s)

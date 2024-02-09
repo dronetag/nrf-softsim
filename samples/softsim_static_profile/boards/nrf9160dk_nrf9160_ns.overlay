@@ -1,0 +1,16 @@
+/ {
+	fstab {
+		compatible = "zephyr,fstab";
+		lfs_storage: lfs_storage {
+			compatible = "zephyr,fstab,littlefs";
+			read-size = <16>;
+			prog-size = <16>;
+			cache-size = <64>;
+			lookahead-size = <32>;
+			block-cycles = <512>;
+			partition = <&lfs_storage>; /* Dummy NCS does not use this property */
+			mount-point = "/storage";
+            automount;
+		};
+	};
+};

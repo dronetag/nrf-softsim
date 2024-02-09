@@ -35,11 +35,27 @@ config SOFTSIM_BUNDLE_TEMPLATE_HEX
     bool "Automatically bundle the template profile hex into the application"
     default n
 
-config SOFTSIM_LITTLE_FS_BACKEND
-    bool "Use LittleFS as the backend for SoftSIM"
+config SOFTSIM_FS_BACKEND
+    bool "Use FileSystem as the backend for SoftSIM"
     default n
     help
-        Use LittleFS as the backend for SoftSIM. 
+        Use FileSystem as the backend for SoftSIM. 
+
+if SOFTSIM
+    config SOFTSIM_FS_BACKEND_PREFIX
+        string "Prefix for the storage path for the Filesystem backend"
+        default "/storage"
+        help
+            Prefix for the storage path for the Filesystem backend.
+
+    
+    config SOFTSIM_FS_PATH_LEN
+        int "Maximum file path length"
+        default 64
+        help
+            Limits the maximum path length for file operations, in bytes.
+endif
+    
 endif #SOFTSIM
 
 
