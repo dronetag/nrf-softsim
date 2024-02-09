@@ -380,25 +380,25 @@ int port_provision(struct ss_profile *profile) {
 
 #ifdef CONFIG_SOFTSIM_FS_BACKUP
   /* TODO: Remount as write mount. The read only mount should be almost impossible to corrupt */
-  LOG_INF("Provisioning SoftSIM 1/4");
+  LOG_INF("Provisioning backup SoftSIM 1/4");
   rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX IMSI_PATH, profile->IMSI, IMSI_LEN);
   if(rc < 0) {
     goto out_err;
   }
 
-  LOG_INF("Provisioning SoftSIM 2/4");
+  LOG_INF("Provisioning backup SoftSIM 2/4");
   rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX ICCID_PATH, profile->ICCID, ICCID_LEN);
   if(rc < 0) {
     goto out_err;
   }
 
-  LOG_INF("Provisioning SoftSIM 3/4");
+  LOG_INF("Provisioning backup SoftSIM 3/4");
   rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX A001_PATH, profile->A001, sizeof(profile->A001));
   if(rc < 0) {
     goto out_err;
   }
 
-  LOG_INF("Provisioning SoftSIM 4/4");
+  LOG_INF("Provisioning backup SoftSIM 4/4");
   rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX A004_PATH, profile->A004, sizeof(profile->A004));
   if(rc < 0) {
     goto out_err;
