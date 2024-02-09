@@ -60,13 +60,13 @@ if SOFTSIM
         help
             Enable template generation for the Filesystem backend using code.
 
-    config SOFTSIM_FS_BACKUP_PATITION
+    config SOFTSIM_FS_BACKUP
         bool "Enable backup partition for the Filesystem backend"
         default n
         help
             Enable backup partition for the Filesystem backend.
 
-    if SOFTSIM_FS_BACKUP_PATITION
+    if SOFTSIM_FS_BACKUP
         config SOFTSIM_FS_BACKUP_PREFIX
             string "Prefix for the backup path for the Filesystem backend"
             default "/backup"

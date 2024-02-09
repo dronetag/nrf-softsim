@@ -149,7 +149,7 @@ int init_fs() {
 
   fs_ctx.is_initialized = true;
 
-#ifdef CONFIG_SOFTSIM_FS_BACKUP_PATITION
+#ifdef CONFIG_SOFTSIM_FS_BACKUP
   if(port_check_provisioned() == 0) {
       uint8_t buffer[IMSI_LEN];
       int rc = 0;
@@ -373,7 +373,7 @@ int port_provision(struct ss_profile *profile) {
 #endif
 
 
-#ifdef CONFIG_SOFTSIM_FS_BACKUP_PATITION
+#ifdef CONFIG_SOFTSIM_FS_BACKUP
   /* TODO: Remount as write mount. The read only mount should be almost impossible to corrupt */
   LOG_INF("Provisioning SoftSIM 1/4");
   rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX IMSI_PATH, profile->IMSI, IMSI_LEN);
