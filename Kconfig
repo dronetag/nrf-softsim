@@ -48,12 +48,17 @@ if SOFTSIM
         help
             Prefix for the storage path for the Filesystem backend.
 
-    
     config SOFTSIM_FS_PATH_LEN
         int "Maximum file path length"
         default 64
         help
             Limits the maximum path length for file operations, in bytes.
+
+    config SOFTSIM_FS_TEMPLATE_GENERATION
+        bool "Enable template generation for the Filesystem backend using code"
+        default y
+        help
+            Enable template generation for the Filesystem backend using code.
 endif
     
 endif #SOFTSIM

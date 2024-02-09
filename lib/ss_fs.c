@@ -336,6 +336,7 @@ int port_provision(struct ss_profile *profile) {
     LOG_ERR("Failed to init FS");
   }
 
+#ifdef CONFIG_SOFTSIM_FS_TEMPLATE_GENERATION
   for(int i = 0; i < onomondo_sf_files_len; i++) {
     const size_t prefLen = sizeof(CONFIG_SOFTSIM_FS_BACKEND_PREFIX)-1;
     char file_path[CONFIG_SOFTSIM_FS_PATH_LEN] = CONFIG_SOFTSIM_FS_BACKEND_PREFIX;
@@ -346,6 +347,7 @@ int port_provision(struct ss_profile *profile) {
         LOG_ERR("Failed to provision file: %s - rc: %d", file_path, rc);
     }
   }
+#endif
 
   LOG_INF("Provisioning SoftSIM 1/4");
   rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKEND_PREFIX IMSI_PATH, profile->IMSI, IMSI_LEN);
