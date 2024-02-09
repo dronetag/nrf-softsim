@@ -20,15 +20,8 @@ LOG_MODULE_REGISTER(softsim_fs, CONFIG_SOFTSIM_LOG_LEVEL);
 #define A001_PATH "/3f00/a001"
 #define A004_PATH "/3f00/a004"
 
-#ifndef SEEK_SET
-#define SEEK_SET 0 /* set file offset to offset */
-#endif
-#ifndef SEEK_CUR
-#define SEEK_CUR 1 /* set file offset to current plus offset */
-#endif
-#ifndef SEEK_END
-#define SEEK_END 2 /* set file offset to EOF plus offset */
-#endif
+int port_provision(struct ss_profile *profile);
+int port_check_provisioned(void);
 
 struct ss_fs_ctx {
     bool is_initialized;
@@ -50,6 +43,103 @@ static int ss_fs_file_init(struct ss_fs_file *f) {
     return 0;
 }
 
+
+static uint8_t default_imsi[] = {0x08, 0x09, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x10};
+
+static int ss_fs_inline_read(const char *path, void *ptr, size_t size)
+{
+    int rc;
+    struct fs_file_t f;
+    fs_file_t_init(&f);
+    rc = fs_open(&f, path, FS_O_READ);
+    if(rc) {
+        return rc;
+    }
+
+    rc = fs_read(&f, ptr, size);
+    if(rc < 0) {
+        return rc;
+    }
+    size_t read_len = rc;
+
+    rc = fs_close(&f);
+    if(rc) {
+        return rc;
+    }
+    return read_len;
+}
+
+static int ss_fs_inline_mkdir(const char *path)
+{
+    int rc;
+    char mkdir_path[CONFIG_SOFTSIM_FS_PATH_LEN];
+    strncpy(mkdir_path, path, sizeof(mkdir_path));
+    /* Create all folders in the path */
+    int part = 0;
+    char *pathPartStart = mkdir_path;
+    char *pathPartEnd = NULL;
+    while(true) {
+        pathPartEnd = strchr(pathPartStart, '/');
+        /* Reached the end */
+        if(pathPartEnd == NULL) {
+            break;
+        }
+        part++;
+
+        /* Skip partition creation of first two '/' example: /storage/ */
+        if(part > 2) {
+
+            /* Replace / with end of string */
+            *pathPartEnd = '\0';
+            LOG_DBG("Creating folder %s", mkdir_path);
+            struct fs_dirent ent;
+            /* To get rid off NCS error when creating already existing folder */
+            rc = fs_stat(mkdir_path, &ent);
+            if(rc == -ENOENT) {
+                rc = fs_mkdir(mkdir_path);
+                if(rc && rc != -EEXIST) {
+                    return rc;
+                }
+            }
+            /* After creation return it back */
+            *pathPartEnd = '/';
+        }
+
+        pathPartStart = pathPartEnd+1;
+    }
+    return 0;
+}
+
+static int ss_fs_inline_write(const char *path, const void *ptr, size_t size)
+{
+    int rc;
+    rc = ss_fs_inline_mkdir(path);
+    if(rc) {
+        return rc;
+    }
+
+    struct fs_file_t f;
+    fs_file_t_init(&f);
+    rc = fs_open(&f, path, FS_O_WRITE | FS_O_CREATE);
+    if(rc) {
+        LOG_ERR("Inline write failed to open file: %s", path);
+        return rc;
+    }
+
+    rc = fs_write(&f, ptr, size);
+    if(rc < 0) {
+        return rc;
+    }
+    size_t write_len = rc;
+    /* TODO: check if written all ? */
+
+    rc = fs_close(&f);
+    if(rc) {
+        return rc;
+    }
+    return write_len;
+}
+
 int init_fs() {
   if (fs_ctx.is_initialized) return 0;  // already initialized
   int rc = ss_fs_ctx_init(&fs_ctx);
@@ -59,6 +149,49 @@ int init_fs() {
   }
 
   fs_ctx.is_initialized = true;
+
+#ifdef CONFIG_SOFTSIM_FS_BACKUP_PATITION
+  if(port_check_provisioned() == 0) {
+      uint8_t buffer[IMSI_LEN];
+      int rc = 0;
+      /* TODO: Maybe check all ? */
+      rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKUP_PREFIX IMSI_PATH, buffer, IMSI_LEN);
+      if(rc > 0) {
+          /* Backup exists do recovery and reinit */
+          struct ss_profile backup_profile;
+          LOG_INF("Restoring SoftSIM 1/4");
+          rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKEND_PREFIX IMSI_PATH, backup_profile.IMSI, IMSI_LEN);
+          if(rc < 0) {
+              goto out_err;
+          }
+
+          LOG_INF("Restoring SoftSIM 2/4");
+          rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKEND_PREFIX ICCID_PATH, backup_profile.ICCID, ICCID_LEN);
+          if(rc < 0) {
+              goto out_err;
+          }
+
+          LOG_INF("Restoring SoftSIM 3/4");
+          rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKEND_PREFIX A001_PATH, backup_profile.A001, sizeof(backup_profile.A001));
+          if(rc < 0) {
+              goto out_err;
+          }
+
+          LOG_INF("Restoring SoftSIM 4/4");
+          rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKEND_PREFIX A004_PATH, backup_profile.A004, sizeof(backup_profile.A004));
+          if(rc < 0) {
+              goto out_err;
+          }
+          rc = port_provision(&backup_profile);
+          if(rc) {
+              LOG_ERR("Profile backup recovery failed: %d", rc);
+          }
+      }
+  }
+out_err:
+#endif
+
+
   return 0;
 }
 
@@ -210,101 +343,6 @@ int port_rmdir(const char *path) {
   return 0;
 }
 
-static uint8_t default_imsi[] = {0x08, 0x09, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x10};
-
-static int ss_fs_inline_read(const char *path, void *ptr, size_t size)
-{
-  int rc;
-  struct fs_file_t f;
-  fs_file_t_init(&f);
-  rc = fs_open(&f, path, FS_O_READ);
-  if(rc) {
-    return rc;
-  }
-
-  rc = fs_read(&f, ptr, size);
-  if(rc < 0) {
-    return rc;
-  }
-  size_t read_len = rc;
-
-  rc = fs_close(&f);
-  if(rc) {
-    return rc;
-  }
-  return read_len;
-}
-
-static int ss_fs_inline_mkdir(const char *path)
-{
-  int rc;
-  char mkdir_path[CONFIG_SOFTSIM_FS_PATH_LEN];
-  strncpy(mkdir_path, path, sizeof(mkdir_path));
-  /* Create all folders in the path */
-  int part = 0;
-  char *pathPartStart = mkdir_path;
-  char *pathPartEnd = NULL;
-  while(true) {
-    pathPartEnd = strchr(pathPartStart, '/');
-    /* Reached the end */
-    if(pathPartEnd == NULL) {
-        break;
-    }
-    part++;
-
-    /* Skip partition creation of first two '/' example: /storage/ */
-    if(part > 2) {
-
-        /* Replace / with end of string */
-        *pathPartEnd = '\0';
-        LOG_DBG("Creating folder %s", mkdir_path);
-        struct fs_dirent ent;
-        /* To get rid off NCS error when creating already existing folder */
-        rc = fs_stat(mkdir_path, &ent);
-        if(rc == -ENOENT) {
-            rc = fs_mkdir(mkdir_path);
-            if(rc && rc != -EEXIST) {
-                return rc;
-            }
-        }
-        /* After creation return it back */
-        *pathPartEnd = '/';
-    }
-
-    pathPartStart = pathPartEnd+1;
-  }
-  return 0;
-}
-
-static int ss_fs_inline_write(const char *path, const void *ptr, size_t size)
-{
-  int rc;
-  rc = ss_fs_inline_mkdir(path);
-  if(rc) {
-    return rc;
-  }
-
-  struct fs_file_t f;
-  fs_file_t_init(&f);
-  rc = fs_open(&f, path, FS_O_WRITE | FS_O_CREATE);
-  if(rc) {
-    LOG_ERR("Inline write failed to open file: %s", path);
-    return rc;
-  }
-
-  rc = fs_write(&f, ptr, size);
-  if(rc < 0) {
-    return rc;
-  }
-  size_t write_len = rc;
-  /* TODO: check if written all ? */
-
-  rc = fs_close(&f);
-  if(rc) {
-    return rc;
-  }
-  return write_len;
-}
 
 int port_check_provisioned() {
   uint8_t buffer[IMSI_LEN];
@@ -349,6 +387,35 @@ int port_provision(struct ss_profile *profile) {
     }
   }
 #endif
+
+
+#ifdef CONFIG_SOFTSIM_FS_BACKUP_PATITION
+  /* TODO: Remount as write mount. The read only mount should be almost impossible to corrupt */
+  LOG_INF("Provisioning SoftSIM 1/4");
+  rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX IMSI_PATH, profile->IMSI, IMSI_LEN);
+  if(rc < 0) {
+    goto out_err;
+  }
+
+  LOG_INF("Provisioning SoftSIM 2/4");
+  rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX ICCID_PATH, profile->ICCID, ICCID_LEN);
+  if(rc < 0) {
+    goto out_err;
+  }
+
+  LOG_INF("Provisioning SoftSIM 3/4");
+  rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX A001_PATH, profile->A001, sizeof(profile->A001));
+  if(rc < 0) {
+    goto out_err;
+  }
+
+  LOG_INF("Provisioning SoftSIM 4/4");
+  rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKUP_PREFIX A004_PATH, profile->A004, sizeof(profile->A004));
+  if(rc < 0) {
+    goto out_err;
+  }
+#endif
+
 
   LOG_INF("Provisioning SoftSIM 1/4");
   rc = ss_fs_inline_write(CONFIG_SOFTSIM_FS_BACKEND_PREFIX IMSI_PATH, profile->IMSI, IMSI_LEN);
