@@ -346,6 +346,10 @@ int port_check_provisioned() {
   return 1;
 }
 
+__weak void softsim_watchdog_feed()
+{
+}
+
 /**
  * @brief Provision the SoftSIM with the given profile
  *
@@ -369,6 +373,7 @@ int port_provision(struct ss_profile *profile) {
     if(rc < 0) {
         LOG_ERR("Failed to provision file: %s - rc: %d", file_path, rc);
     }
+    softsim_watchdog_feed();
   }
 #endif
 
