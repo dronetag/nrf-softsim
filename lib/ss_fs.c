@@ -123,7 +123,8 @@ size_t port_fread(void *ptr, size_t size, size_t nmemb, port_FILE fp) {
     LOG_ERR("Failed to read file");
     return 0;
   }
-  return rc;
+  /* Return number of elements read */
+  return rc/size;
 }
 
 
@@ -392,5 +393,5 @@ size_t port_fwrite(const void *ptr, size_t size, size_t count, port_FILE fp) {
     LOG_ERR("Failed to write to file");
     return 0;
   }
-  return rc;
+  return rc/size;
 }
