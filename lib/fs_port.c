@@ -9,6 +9,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/storage/flash_map.h>
 
+#include "../littlefs/scripts/ss_static_files.h"
 #include "f_cache.h"
 #include "provision.h"
 #include "profile.h"
@@ -18,10 +19,14 @@ LOG_MODULE_DECLARE(softsim, CONFIG_SOFTSIM_LOG_LEVEL);
 static struct nvs_fs fs;
 static struct ss_list fs_cache;
 
-#if DT_HAS_CHOSEN(zephyr_softsim_partition)
-#define NVS_PARTITION DT_FIXED_PARTITION_ID(DT_CHOSEN(zephyr_softsim_partition))
+#define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
+
+#if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, softsim_partition)
+    #define NVS_PARTITION_ID DT_FIXED_PARTITION_ID(DT_PROP_BY_PHANDLE(ZEPHYR_USER_NODE, softsim_partition))
+#elif DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, softsim_partition_name)
+    #define NVS_PARTITION_ID FIXED_PARTITION_ID(DT_STRING_TOKEN(ZEPHYR_USER_NODE, softsim_partition_name))
 #else
-#define NVS_PARTITION FIXED_PARTITION_ID(nvs_storage)
+    #define NVS_PARTITION_ID FIXED_PARTITION_ID(nvs_storage)
 #endif
 
 #define NVS_PARTITION_ID FIXED_PARTITION_ID(NVS_PARTITION)
@@ -50,66 +55,101 @@ static struct ss_list fs_cache;
 void read_nvs_to_cache(struct cache_entry *entry);
 
 uint8_t fs_is_initialized = 0;
+uint8_t nvs_is_initialized = 0;
 
-int init_fs() {
-  if (fs_is_initialized) return 0;  // already initialized
+int load_dirs() {
+    uint8_t *data = NULL;
+    size_t len = 0;
+    ss_list_init(&fs_cache);
 
-  ss_list_init(&fs_cache);
-  uint8_t *data = NULL;
-  size_t len = 0;
+    int rc = nvs_read(&fs, DIR_ID, NULL, 0);
+    if(rc < 0) {
+        LOG_ERR("NVS Read failed to load dir_id: %d", rc);
+        goto out;
+    }
 
-  const struct flash_area *nvs_area;
-  int rc = flash_area_open(NVS_PARTITION_ID, &nvs_area);
-  if(rc) {
-      LOG_ERR("Failed to open flash area: %d", rc);
-      return -1;
-  }
-  struct flash_sector hw_flash_sector;
-  uint32_t sector_cnt = 1;
+    len = rc;
 
-  rc = flash_area_get_sectors(NVS_PARTITION_ID, &sector_cnt,
-                              &hw_flash_sector);
-  if(rc) {
-      LOG_ERR("Failed to retrieve information about sectors: %d", rc);
-      return -1;
-  }
-
-  fs.flash_device = nvs_area->fa_dev;
-  fs.sector_size = hw_flash_sector.fs_size;
-  fs.sector_count = nvs_area->fa_size / hw_flash_sector.fs_size;
-  fs.offset = nvs_area->fa_off;
-
-  rc = nvs_mount(&fs);
-  if (rc) {
-    LOG_ERR("failed to mount nvs\n");
-    return -1;
-  }
-
-  rc = nvs_read(&fs, DIR_ID, NULL, 0);
-
-  len = rc;
-
-  /*************************
+    /*************************
    * Read DIR_ENTRY from NVS
    * This is used to construct a linked list that
    * serves as a cache and lookup table for the filesystem
    */
-  if (!data && rc) {
-    data = SS_ALLOC_N(len * sizeof(uint8_t));
-    rc = nvs_read(&fs, DIR_ID, data, len);
-    __ASSERT_NO_MSG(rc == len);
+    if (!data && rc) {
+        data = SS_ALLOC_N(len * sizeof(uint8_t));
+        rc = nvs_read(&fs, DIR_ID, data, len);
+        __ASSERT_NO_MSG(rc == len);
+    }
+
+    ss_list_init(&fs_cache);
+    generate_dir_table_from_blob(&fs_cache, data, len);
+
+    if (ss_list_empty(&fs_cache)) goto out;
+out:
+    SS_FREE(data);
+    return ss_list_empty(&fs_cache);
+}
+
+
+int init_nvs(bool erase) {
+    if (nvs_is_initialized && !erase) return 0;  // already initialized
+    const struct flash_area *nvs_area;
+    int rc = flash_area_open(NVS_PARTITION_ID, &nvs_area);
+    if(rc) {
+        LOG_ERR("Failed to open flash area: %d", rc);
+        return -1;
+    }
+    struct flash_sector hw_flash_sector;
+    uint32_t sector_cnt = 1;
+
+    rc = flash_area_get_sectors(NVS_PARTITION_ID, &sector_cnt,
+                                &hw_flash_sector);
+    if(rc && rc != -ENOMEM) {
+        LOG_ERR("Failed to retrieve information about sectors: %d", rc);
+        return -1;
+    }
+    if(erase) {
+        LOG_INF("NVS Softsim storage erasing...");
+        rc = flash_area_erase(nvs_area, 0, nvs_area->fa_size);
+        if(rc) {
+            LOG_ERR("Failed to erase area: %d", rc);
+            return rc;
+        }
+    }
+
+    fs.flash_device = nvs_area->fa_dev;
+    fs.sector_size = hw_flash_sector.fs_size;
+    fs.sector_count = nvs_area->fa_size / hw_flash_sector.fs_size;
+    fs.offset = nvs_area->fa_off;
+
+    rc = nvs_mount(&fs);
+    if (rc) {
+        LOG_ERR("failed to mount nvs\n");
+        return -1;
+    }
+    nvs_is_initialized++;
+    return 0;
+}
+
+int init_fs() {
+  if (fs_is_initialized) return 0;  // already initialized
+  int rc = 0;
+  rc = init_nvs(false);
+  if(rc) {
+    return -1;
   }
 
-  ss_list_init(&fs_cache);
-  generate_dir_table_from_blob(&fs_cache, data, len);
-
-  if (ss_list_empty(&fs_cache)) goto out;
-
+  rc = load_dirs();
+  if(rc) {
+// #ifdef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
+//     /* Allow load dirs to fail it will be fixed during provisioning */
+//     rc = 0;
+// #else
+    return -1;
+// #endif
+  }
   fs_is_initialized++;
-
-out:
-  SS_FREE(data);
-  return ss_list_empty(&fs_cache);
+  return rc;
 }
 
 int deinit_fs() {
@@ -395,6 +435,9 @@ int port_check_provisioned() {
   int ret;
   uint8_t buffer[IMSI_LEN] = {0};
   struct cache_entry *entry = (struct cache_entry *)f_cache_find_by_name(IMSI_PATH, &fs_cache);
+  if(entry == NULL) {
+    return 0;
+  }
 
   ret = nvs_read(&fs, entry->key, buffer, IMSI_LEN);
   if (ret < 0) {
@@ -409,6 +452,10 @@ int port_check_provisioned() {
   return 1;
 }
 
+__weak void softsim_watchdog_feed()
+{
+}
+
 /**
  * @brief Provision the SoftSIM with the given profile
  *
@@ -417,20 +464,61 @@ int port_check_provisioned() {
  * @param len Len of profile. 332 otherwise invalid.
  */
 int port_provision(struct ss_profile *profile) {
-  int rc = init_fs();
+  bool erase_during_provisioning = false;
+#ifdef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
+  erase_during_provisioning = true;
+#endif
+  int rc = init_nvs(erase_during_provisioning);
   if (rc) {
-    LOG_ERR("Failed to init FS");
+    LOG_ERR("Failed to init NVS");
   }
 
-#ifdef CONFIG_SOFTSIM_FS_TEMPLATE_GENERATION_CODE
+#ifdef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
+  size_t provDirsLen = onomondo_sf_files_names_len + onomondo_sf_files_len*3;
+  uint8_t *provDirs = SS_ALLOC_N(provDirsLen);
+  if(provDirs == NULL) {
+    return -ENOMEM;
+  }
+  uint8_t *provDirsPtr = provDirs;
+
   for(int i = 0; i < onomondo_sf_files_len; i++) {
-    struct cache_entry *entry = (struct cache_entry *)f_cache_find_by_name(onomondo_sf_files[i].name, &fs_cache);
-    rc = nvs_write(&fs, entry->key, onomondo_sf_files[i].data, onomondo_sf_files[i].size);
-    if (rc < 0) {
-      LOG_ERR("Failed to provision file: %s - rc: %d", file_path, rc);
+    rc = nvs_write(&fs, onomondo_sf_files[i].nvs_key, onomondo_sf_files[i].data, onomondo_sf_files[i].size);
+    /* Zero returned when value already written */
+    if (rc != 0 && rc != onomondo_sf_files[i].size) {
+      LOG_ERR("Failed to provision file: %s - rc: %d", onomondo_sf_files[i].name, rc);
       goto out_err;
     }
+    uint8_t fileNameLen = strlen(onomondo_sf_files[i].name);
+    if((provDirsPtr-provDirs) + 3 + fileNameLen >= provDirsLen) {
+        break;
+    }
+    /* Store length of the filename */
+    provDirsPtr[0] = fileNameLen;
+    /* Store associated key */
+    provDirsPtr[1] = (onomondo_sf_files[i].nvs_key >> 8) & 0xFF;
+    provDirsPtr[2] = (onomondo_sf_files[i].nvs_key) & 0xFF;
+    provDirsPtr += 3;
+    /* Store filename */
+    memcpy(provDirsPtr, onomondo_sf_files[i].name, fileNameLen);
+    provDirsPtr += fileNameLen;
     softsim_watchdog_feed();
+  }
+
+  ssize_t dirs_len = provDirsPtr-provDirs;
+  /* Store the DIR_ID Entry */
+  rc = nvs_write(&fs, DIR_ID, provDirs, dirs_len);
+  SS_FREE(provDirs);
+  /* Zero returned when value already written */
+  if(rc != 0 && rc != dirs_len) {
+    LOG_ERR("Failed to generate DIRS: %d", rc);
+    return -1;
+  }
+
+  /* Try to load the dirs after generation */
+  rc = load_dirs();
+  if(rc) {
+    LOG_ERR("Failed to load DIRS even after dirs generation: %d", rc);
+    return -1;
   }
 #endif
 

@@ -18,9 +18,11 @@ BUILD_ASSERT(CONFIG_HEAP_MEM_POOL_SIZE >= EXPECTED_MIN_HEAP_SIZE,
 #if CONFIG_SETTINGS_NVS
 BUILD_ASSERT(0, "Softsim: Please disable CONFIG_SETTINGS_NVS. Choose CONFIG_SETTINGS_FCB instead.");
 #else
+#ifndef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
 BUILD_ASSERT(CONFIG_PM_PARTITION_SIZE_NVS_STORAGE == EXPECTED_PARTITION_SIZE,
              "SoftSIM: "
              "nvs_partition size is not valid. "
              "Please reconfigure the project.");
+#endif
 #endif
 #endif

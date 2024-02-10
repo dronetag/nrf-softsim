@@ -34,17 +34,21 @@ def to_c_array(path='files', out_path='ss_static_files.c'):
 
     s += 'const sf_file_t onomondo_sf_files_arr[] = {\n'
     fs = []
-    for f in files:
+
+    file_name_len = 0
+    for i,f in enumerate(files):
         c_f_name = (f).replace("/", "_").replace(".", "_")
         with open(path + f, 'r') as file:
+            file_name_len += len(f)
             data = file.read()
             data_len = len(data)/2
             # get it in chunks of 2
             data = re.findall('..', data)
             data = ','.join([f'0x{byte}' for byte in data])
-            fs.append(f'{{.name = "{f}", .data = {c_f_name}, .size = sizeof({c_f_name})}}')
+            fs.append(f'{{.name = "{f}", .data = {c_f_name}, .size = sizeof({c_f_name}), .nvs_key = {i+4000}}}')
     s += ', \n'.join(fs) + '\n};\n'
     
+    s += f'const uint32_t onomondo_sf_files_names_len = {file_name_len};\n'
     s += f'const uint32_t onomondo_sf_files_len = {len(files)};\n'
     s += f'const uint32_t onomondo_sf_dirs_len = {len(directories)};\n'
     s += f'const sf_file_t *onomondo_sf_files = onomondo_sf_files_arr;\n'

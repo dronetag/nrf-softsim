@@ -4,11 +4,12 @@ include_directories(include)
 
 zephyr_library_sources(nrf_softsim.c provision.c  heap_port.c profile.c crypto_port.c build_asserts.c )
 
+if(CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE)
+  zephyr_library_sources(../littlefs/scripts/ss_static_files.c)
+endif()
+
 if (CONFIG_SOFTSIM_FS_BACKEND)
   zephyr_library_sources(ss_fs.c)
-  if(CONFIG_SOFTSIM_FS_TEMPLATE_GENERATION_CODE)
-    zephyr_library_sources(../littlefs/scripts/ss_static_files.c)
-  endif()
 else()
   zephyr_library_sources(fs_port.c f_cache.c)
 endif()
