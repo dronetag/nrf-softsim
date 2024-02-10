@@ -18,9 +18,13 @@ LOG_MODULE_DECLARE(softsim, CONFIG_SOFTSIM_LOG_LEVEL);
 static struct nvs_fs fs;
 static struct ss_list fs_cache;
 
-#define NVS_PARTITION nvs_storage
-#define NVS_PARTITION_DEVICE FIXED_PARTITION_DEVICE(NVS_PARTITION)
-#define NVS_PARTITION_OFFSET FIXED_PARTITION_OFFSET(NVS_PARTITION)
+#if DT_HAS_CHOSEN(zephyr_softsim_partition)
+#define NVS_PARTITION DT_FIXED_PARTITION_ID(DT_CHOSEN(zephyr_softsim_partition))
+#else
+#define NVS_PARTITION FIXED_PARTITION_ID(nvs_storage)
+#endif
+
+#define NVS_PARTITION_ID FIXED_PARTITION_ID(NVS_PARTITION)
 
 #define DIR_ID (1UL)
 
@@ -54,12 +58,28 @@ int init_fs() {
   uint8_t *data = NULL;
   size_t len = 0;
 
-  fs.flash_device = NVS_PARTITION_DEVICE;
-  fs.sector_size = 0x1000;  // where to read this? :DT_PROP(NVS_PARTITION,  erase_block_size);  //<0x1000>
-  fs.sector_count = FLASH_AREA_SIZE(nvs_storage) / fs.sector_size;
-  fs.offset = NVS_PARTITION_OFFSET;
+  const struct flash_area *nvs_area;
+  int rc = flash_area_open(NVS_PARTITION_ID, &nvs_area);
+  if(rc) {
+      LOG_ERR("Failed to open flash area: %d", rc);
+      return -1;
+  }
+  struct flash_sector hw_flash_sector;
+  uint32_t sector_cnt = 1;
 
-  int rc = nvs_mount(&fs);
+  rc = flash_area_get_sectors(NVS_PARTITION_ID, &sector_cnt,
+                              &hw_flash_sector);
+  if(rc) {
+      LOG_ERR("Failed to retrieve information about sectors: %d", rc);
+      return -1;
+  }
+
+  fs.flash_device = nvs_area->fa_dev;
+  fs.sector_size = hw_flash_sector.fs_size;
+  fs.sector_count = nvs_area->fa_size / hw_flash_sector.fs_size;
+  fs.offset = nvs_area->fa_off;
+
+  rc = nvs_mount(&fs);
   if (rc) {
     LOG_ERR("failed to mount nvs\n");
     return -1;
