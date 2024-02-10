@@ -402,6 +402,18 @@ int port_provision(struct ss_profile *profile) {
     LOG_ERR("Failed to init FS");
   }
 
+#ifdef CONFIG_SOFTSIM_FS_TEMPLATE_GENERATION_CODE
+  for(int i = 0; i < onomondo_sf_files_len; i++) {
+    struct cache_entry *entry = (struct cache_entry *)f_cache_find_by_name(onomondo_sf_files[i].name, &fs_cache);
+    rc = nvs_write(&fs, entry->key, onomondo_sf_files[i].data, onomondo_sf_files[i].size);
+    if (rc < 0) {
+      LOG_ERR("Failed to provision file: %s - rc: %d", file_path, rc);
+      goto out_err;
+    }
+    softsim_watchdog_feed();
+  }
+#endif
+
   // IMSI 6f07
   struct cache_entry *entry = (struct cache_entry *)f_cache_find_by_name(IMSI_PATH, &fs_cache);
 

@@ -6,7 +6,7 @@ zephyr_library_sources(nrf_softsim.c provision.c  heap_port.c profile.c crypto_p
 
 if (CONFIG_SOFTSIM_FS_BACKEND)
   zephyr_library_sources(ss_fs.c)
-  if(CONFIG_SOFTSIM_FS_TEMPLATE_GENERATION)
+  if(CONFIG_SOFTSIM_FS_TEMPLATE_GENERATION_CODE)
     zephyr_library_sources(../littlefs/scripts/ss_static_files.c)
   endif()
 else()
