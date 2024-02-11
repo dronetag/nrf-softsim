@@ -151,13 +151,12 @@ int init_fs() {
 
 #ifdef CONFIG_SOFTSIM_FS_BACKUP
   if(port_check_provisioned() == 0) {
-      uint8_t buffer[IMSI_LEN];
+      struct ss_profile backup_profile;
       int rc = 0;
       /* TODO: Maybe check all ? */
-      rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKUP_PREFIX IMSI_PATH, buffer, IMSI_LEN);
+      rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKEND_PREFIX IMSI_PATH, backup_profile.IMSI, IMSI_LEN);
       if(rc > 0) {
           /* Backup exists do recovery and reinit */
-          struct ss_profile backup_profile;
           LOG_INF("Restoring SoftSIM 1/4");
           rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKEND_PREFIX IMSI_PATH, backup_profile.IMSI, IMSI_LEN);
           if(rc < 0) {
