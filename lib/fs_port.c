@@ -17,6 +17,7 @@
 LOG_MODULE_DECLARE(softsim, CONFIG_SOFTSIM_LOG_LEVEL);
 
 static struct nvs_fs fs;
+static struct nvs_fs fs_backup;
 static struct ss_list fs_cache;
 
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
@@ -29,7 +30,11 @@ static struct ss_list fs_cache;
     #define NVS_PARTITION_ID FIXED_PARTITION_ID(nvs_storage)
 #endif
 
-#define NVS_PARTITION_ID FIXED_PARTITION_ID(NVS_PARTITION)
+#if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, softsim_backup_partition)
+    #define NVS_BACKUP_PARTITION_ID DT_FIXED_PARTITION_ID(DT_PROP_BY_PHANDLE(ZEPHYR_USER_NODE, softsim_partition))
+#elif DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, softsim_backup_partition_name)
+    #define NVS_BACKUP_PARTITION_ID FIXED_PARTITION_ID(DT_STRING_TOKEN(ZEPHYR_USER_NODE, softsim_partition_name))
+#endif
 
 #define DIR_ID (1UL)
 
@@ -37,6 +42,11 @@ static struct ss_list fs_cache;
 #define ICCID_PATH "/3f00/2fe2"
 #define A001_PATH "/3f00/a001"
 #define A004_PATH "/3f00/a004"
+
+#define IMSI_BACKUP_ID 1000
+#define ICCID_BACKUP_ID 1001
+#define A001_BACKUP_ID 1002
+#define A004_BACKUP_ID 1003
 
 #ifndef SEEK_SET
 #define SEEK_SET 0 /* set file offset to offset */
@@ -53,6 +63,7 @@ static struct ss_list fs_cache;
 //  that the buffer is set. Either by allocating new memory or by
 // stealing from another entry.
 void read_nvs_to_cache(struct cache_entry *entry);
+int port_provision_inner(struct ss_profile *profile, bool restore);
 
 uint8_t fs_is_initialized = 0;
 uint8_t nvs_is_initialized = 0;
@@ -90,9 +101,8 @@ out:
     return ss_list_empty(&fs_cache);
 }
 
-
-int init_nvs(bool erase) {
-    if (nvs_is_initialized && !erase) return 0;  // already initialized
+int init_nvs_from_id(struct nvs_fs *nvs, int partition_id, bool erase)
+{
     const struct flash_area *nvs_area;
     int rc = flash_area_open(NVS_PARTITION_ID, &nvs_area);
     if(rc) {
@@ -127,6 +137,22 @@ int init_nvs(bool erase) {
         LOG_ERR("failed to mount nvs\n");
         return -1;
     }
+    return 0;
+}
+
+int init_nvs(bool erase) {
+    int rc;
+    if (nvs_is_initialized && !erase) return 0;  // already initialized
+    rc = init_nvs_from_id(&fs, NVS_PARTITION_ID, erase);
+    if(rc) {
+        return rc;
+    }
+#ifdef NVS_BACKUP_PARTITION_ID
+    rc = init_nvs_from_id(&fs, NVS_BACKUP_PARTITION_ID, false);
+    if(rc) {
+        return rc;
+    }
+#endif
     nvs_is_initialized++;
     return 0;
 }
@@ -141,12 +167,49 @@ int init_fs() {
 
   rc = load_dirs();
   if(rc) {
-// #ifdef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
-//     /* Allow load dirs to fail it will be fixed during provisioning */
-//     rc = 0;
-// #else
+    /* TODO: Somehow monitor the XSIM notification to detect FS Corruption */
+#ifdef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
+    /* Load dirs is corrupted check if we have the backup to restore the FS */
+#ifdef NVS_BACKUP_PARTITION_ID
+    struct ss_profile backup_profile;
+    int rc = 0;
+    /* TODO: Maybe check all ? */
+    rc = nvs_read(&fs_backup, IMSI_BACKUP_ID, backup_profile.IMSI, IMSI_LEN);
+    if(rc > 0) {
+      /* Backup exists do recovery and reinit */
+      LOG_INF("Restoring SoftSIM 1/4");
+      rc = nvs_read(&fs_backup, IMSI_BACKUP_ID, backup_profile.IMSI, IMSI_LEN);
+      if(rc < 0) {
+          goto out_err;
+      }
+
+      LOG_INF("Restoring SoftSIM 2/4");
+      rc = nvs_read(&fs_backup, ICCID_BACKUP_ID, backup_profile.ICCID, ICCID_LEN);
+      if(rc < 0) {
+          goto out_err;
+      }
+
+      LOG_INF("Restoring SoftSIM 3/4");
+      rc = nvs_read(&fs_backup, A001_BACKUP_ID, backup_profile.A001, sizeof(backup_profile.A001));
+      if(rc < 0) {
+          goto out_err;
+      }
+
+      LOG_INF("Restoring SoftSIM 4/4");
+      rc = nvs_read(&fs_backup, A004_BACKUP_ID, backup_profile.A004, sizeof(backup_profile.A004));
+      if(rc < 0) {
+          goto out_err;
+      }
+      rc = port_provision_inner(&backup_profile, true);
+      if(rc) {
+          LOG_ERR("Profile backup recovery failed: %d", rc);
+      }
+    }
+  out_err:
+#endif
+#else
     return -1;
-// #endif
+#endif
   }
   fs_is_initialized++;
   return rc;
@@ -456,6 +519,7 @@ __weak void softsim_watchdog_feed()
 {
 }
 
+
 /**
  * @brief Provision the SoftSIM with the given profile
  *
@@ -464,6 +528,11 @@ __weak void softsim_watchdog_feed()
  * @param len Len of profile. 332 otherwise invalid.
  */
 int port_provision(struct ss_profile *profile) {
+  return port_provision_inner(profile, false);
+}
+
+int port_provision_inner(struct ss_profile *profile, bool restore)
+{
   bool erase_during_provisioning = false;
 #ifdef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
   erase_during_provisioning = true;
@@ -520,6 +589,33 @@ int port_provision(struct ss_profile *profile) {
     LOG_ERR("Failed to load DIRS even after dirs generation: %d", rc);
     return -1;
   }
+#ifdef NVS_BACKUP_PARTITION_ID
+  if(!restore) {
+      LOG_INF("Provisioning backup SoftSIM 1/4");
+      rc = nvs_write(&fs_backup, IMSI_BACKUP_ID, profile->IMSI, IMSI_LEN);
+      if(rc < 0) {
+        goto out_err;
+      }
+
+      LOG_INF("Provisioning backup SoftSIM 2/4");
+      rc = nvs_write(&fs_backup, ICCID_BACKUP_ID, profile->ICCID, ICCID_LEN);
+      if(rc < 0) {
+        goto out_err;
+      }
+
+      LOG_INF("Provisioning backup SoftSIM 3/4");
+      rc = nvs_write(&fs_backup, A001_BACKUP_ID, profile->A001, sizeof(profile->A001));
+      if(rc < 0) {
+        goto out_err;
+      }
+
+      LOG_INF("Provisioning backup SoftSIM 4/4");
+      rc = nvs_write(&fs_backup, A004_BACKUP_ID, profile->A004, sizeof(profile->A004));
+      if(rc < 0) {
+        goto out_err;
+      }
+  }
+#endif
 #endif
 
   // IMSI 6f07
