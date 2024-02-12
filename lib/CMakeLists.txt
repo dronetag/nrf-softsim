@@ -7,11 +7,15 @@ zephyr_library_sources(nrf_softsim.c provision.c  heap_port.c profile.c crypto_p
 if(CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE)
   zephyr_library_sources(../littlefs/scripts/ss_static_files.c)
 endif()
-
+if(CONFIG_SOFTSIM_FS_READ_FILE_CACHE)
+  zephyr_library_sources(fs_port_rcache.c)
+else()
+  zephyr_library_sources(fs_port.c)
+endif()
 if (CONFIG_SOFTSIM_FS_BACKEND)
   zephyr_library_sources(ss_fs.c)
 else()
-  zephyr_library_sources(fs_port.c f_cache.c)
+  zephyr_library_sources(nvs_fs.c f_cache.c)
 endif()
 
 zephyr_library_import(crypto ${CMAKE_CURRENT_SOURCE_DIR}/libcrypto.a)

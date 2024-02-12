@@ -1,4 +1,3 @@
-#include <onomondo/softsim/fs_port.h>
 #include <onomondo/softsim/utils.h>
 #include <onomondo/softsim/log.h>
 #include <onomondo/softsim/mem.h>
@@ -10,7 +9,9 @@
 #include "../littlefs/scripts/ss_static_files.h"
 #include "provision.h"
 #include "profile.h"
+#include "impl_fs_port.h"
 
+// LOG_MODULE_REGISTER(softsim_fs, 4);
 LOG_MODULE_REGISTER(softsim_fs, CONFIG_SOFTSIM_LOG_LEVEL);
 #define DIR_ID (1UL)
 
@@ -19,8 +20,8 @@ LOG_MODULE_REGISTER(softsim_fs, CONFIG_SOFTSIM_LOG_LEVEL);
 #define A001_PATH "/3f00/a001"
 #define A004_PATH "/3f00/a004"
 
-int port_provision(struct ss_profile *profile);
-int port_check_provisioned(void);
+int impl_port_provision(struct ss_profile *profile);
+int impl_port_check_provisioned(void);
 
 struct ss_fs_ctx {
     bool is_initialized;
@@ -139,7 +140,7 @@ static int ss_fs_inline_write(const char *path, const void *ptr, size_t size)
     return write_len;
 }
 
-int init_fs() {
+int impl_init_fs() {
   if (fs_ctx.is_initialized) return 0;  // already initialized
   int rc = ss_fs_ctx_init(&fs_ctx);
   if(rc) {
@@ -150,7 +151,7 @@ int init_fs() {
   fs_ctx.is_initialized = true;
 
 #ifdef CONFIG_SOFTSIM_FS_BACKUP
-  if(port_check_provisioned() == 0) {
+  if(impl_port_check_provisioned() == 0) {
       struct ss_profile backup_profile;
       int rc = 0;
       /* TODO: Maybe check all ? */
@@ -180,7 +181,7 @@ int init_fs() {
           if(rc < 0) {
               goto out_err;
           }
-          rc = port_provision(&backup_profile);
+          rc = impl_port_provision(&backup_profile);
           if(rc) {
               LOG_ERR("Profile backup recovery failed: %d", rc);
           }
@@ -197,7 +198,7 @@ out_err:
  * This will only be called when softsim is deinitialized.
  * I.e. when the modem goes to cfun=0 or cfun=4
  * */
-int deinit_fs() {
+int impl_deinit_fs() {
   /* TODO: Do we want to close all files just to be sure ? */
   fs_ctx.is_initialized = false;
   return 0;
@@ -209,7 +210,7 @@ int deinit_fs() {
  * @param mode 
  * @return pointer to a file handle
  */
-port_FILE port_fopen(char *path, char *mode) {
+impl_port_FILE impl_port_fopen(char *path, char *mode) {
   int rc = 0;
   struct ss_fs_file *f = SS_ALLOC(struct ss_fs_file);
 
@@ -244,7 +245,7 @@ port_FILE port_fopen(char *path, char *mode) {
  * @param fp file pointer
  * @return elements read
  */
-size_t port_fread(void *ptr, size_t size, size_t nmemb, port_FILE fp) {
+size_t impl_port_fread(void *ptr, size_t size, size_t nmemb, impl_port_FILE fp) {
   if (nmemb == 0 || size == 0) {
     return 0;
   }
@@ -258,7 +259,7 @@ size_t port_fread(void *ptr, size_t size, size_t nmemb, port_FILE fp) {
   return rc/size;
 }
 
-int port_fclose(port_FILE fp) {
+int impl_port_fclose(impl_port_FILE fp) {
   struct ss_fs_file *f = fp;
   LOG_DBG("close file");
   int rc = fs_close(&f->file);
@@ -269,7 +270,7 @@ int port_fclose(port_FILE fp) {
   return 0;
 }
 
-int port_fseek(port_FILE fp, long offset, int whence) {
+int impl_port_fseek(impl_port_FILE fp, long offset, int whence) {
   struct ss_fs_file *f = fp;
   int rc = fs_seek(&f->file, offset, whence);
   if(rc) {
@@ -277,7 +278,7 @@ int port_fseek(port_FILE fp, long offset, int whence) {
   }
   return rc;
 }
-long port_ftell(port_FILE fp) {
+long impl_port_ftell(impl_port_FILE fp) {
   struct ss_fs_file *f = fp;
   int rc = fs_tell(&f->file);
   if(rc < 0) {
@@ -286,8 +287,8 @@ long port_ftell(port_FILE fp) {
   return rc;
 }
 
-int port_fputc(int c, port_FILE fp) {
-  size_t written = port_fwrite(&c, 1, 1, fp);
+int impl_port_fputc(int c, impl_port_FILE fp) {
+  size_t written = impl_port_fwrite(&c, 1, 1, fp);
 
   if (written == 1) {
     return c;
@@ -297,11 +298,11 @@ int port_fputc(int c, port_FILE fp) {
 
 // TODO -> safe to omit for now. Internally SoftSIM will verify that a
 // directory exists after creation.
-int port_access(const char *path, int amode) {
+int impl_port_access(const char *path, int amode) {
   return 0;
 }
 
-int port_mkdir(const char *path, int _) {
+int impl_port_mkdir(const char *path, int _) {
   int rc = fs_mkdir(path);
   if(rc) {
     LOG_ERR("Failed to create directory path: %s", path);
@@ -309,7 +310,7 @@ int port_mkdir(const char *path, int _) {
   return rc;
 }  
 
-int port_remove(const char *path) {
+int impl_port_remove(const char *path) {
   int rc = fs_unlink(path);
   if(rc) {
     LOG_ERR("Failed to remove path: %s", path);
@@ -318,7 +319,7 @@ int port_remove(const char *path) {
 }
 
 // very unlike to be invoked tbh
-int port_rmdir(const char *path) {
+int impl_port_rmdir(const char *path) {
   int rc = fs_unlink(path);
   if(rc) {
     LOG_ERR("Failed to remove directory: %s", path);
@@ -327,7 +328,7 @@ int port_rmdir(const char *path) {
 }
 
 
-int port_check_provisioned() {
+int impl_port_check_provisioned() {
   uint8_t buffer[IMSI_LEN];
   int rc = 0;
   rc = ss_fs_inline_read(CONFIG_SOFTSIM_FS_BACKEND_PREFIX IMSI_PATH, buffer, IMSI_LEN);
@@ -356,8 +357,8 @@ __weak void softsim_watchdog_feed()
  * @param profile ptr to the profile
  * @param len Len of profile. 332 otherwise invalid.
  */
-int port_provision(struct ss_profile *profile) {
-  int rc = init_fs();
+int impl_port_provision(struct ss_profile *profile) {
+  int rc = impl_init_fs();
   if (rc) {
     LOG_ERR("Failed to init FS");
   }
@@ -438,7 +439,7 @@ out_err:
   return rc;
 }
 
-size_t port_fwrite(const void *ptr, size_t size, size_t count, port_FILE fp) {
+size_t impl_port_fwrite(const void *ptr, size_t size, size_t count, impl_port_FILE fp) {
   if (size == 0 || count == 0) {
     return 0;
   }

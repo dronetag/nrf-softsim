@@ -46,6 +46,19 @@ config SOFTSIM_FS_BACKEND
     help
         Use FileSystem as the backend for SoftSIM. 
 
+
+config SOFTSIM_FS_READ_FILE_CACHE
+    bool "Use FileSystem read cache"
+    default n
+    help
+        Keeps N files open and instead of opening and closing it is seeking to the beginning. 
+
+if SOFTSIM_FS_READ_FILE_CACHE
+    config SOFTSIM_FS_READ_FILE_CACHE_SIZE
+        int "Number of open files to keep in the cache"
+        default 6
+endif
+
 if SOFTSIM
     config SOFTSIM_FS_BACKEND_PREFIX
         string "Prefix for the storage path for the Filesystem backend"
