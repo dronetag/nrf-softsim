@@ -6,6 +6,8 @@
 
 // TODO: rename - (fs_utils?)
 
+struct cache_ctx;
+
 /**
  * @brief TODO: move this function to a more appropriate place
  * It is used to generate the directory structure based on the content in the
@@ -17,6 +19,6 @@
  * @param blob pointer to blob of data
  * @param size size of blob
  */
-void generate_dir_table_from_blob(struct ss_list* dirs, uint8_t* blob, size_t size);
+void generate_dir_table_from_blob(struct cache_ctx *cache, uint8_t *blob, size_t size);
 
 #endif  // _PROVISION_H_

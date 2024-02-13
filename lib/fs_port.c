@@ -10,9 +10,24 @@
 #include "impl_fs_port.h"
 
 
+// #define PROFILE_PORT_IMPL
+// #define PROFILE_PUTC
+#ifdef PROFILE_PORT_IMPL
+#define LOG_PORT_CALL() LOG_DBG("%s", __func__)
+#define LOG_PORT_CALL_LONG(x, fmt, ...) LOG_DBG("%s rc: %ld - " fmt, __func__, x, __VA_ARGS__)
+#define LOG_PORT_CALL_INT(x, fmt, ...) LOG_DBG("%s rc: %d - " fmt, __func__, x, __VA_ARGS__)
+#define LOG_PORT_CALL_PTR(x, fmt, ...) LOG_DBG("%s rc: %p - " fmt, __func__, x, __VA_ARGS__)
+#else
+#define LOG_PORT_CALL()
+#define LOG_PORT_CALL_LONG(x, fmt, ...)
+#define LOG_PORT_CALL_INT(x, fmt, ...)
+#define LOG_PORT_CALL_PTR(x, fmt, ...)
+#endif
+
 LOG_MODULE_REGISTER(softsim_fs_port, CONFIG_SOFTSIM_LOG_LEVEL);
 
 int init_fs() {
+    LOG_PORT_CALL();
     return impl_init_fs();
 }
 
@@ -21,6 +36,7 @@ int init_fs() {
  * I.e. when the modem goes to cfun=0 or cfun=4
  * */
 int deinit_fs() {
+    LOG_PORT_CALL();
     return impl_deinit_fs();
 }
 
@@ -31,7 +47,10 @@ int deinit_fs() {
  * @return pointer to a file handle
  */
 port_FILE port_fopen(char *path, char *mode) {
-    return impl_port_fopen(path, mode);
+
+    port_FILE rc = impl_port_fopen(path, mode);
+    LOG_PORT_CALL_PTR(rc, "path: %s mode: %s", path, mode);
+    return rc;
 }
 
 /**
@@ -44,40 +63,60 @@ port_FILE port_fopen(char *path, char *mode) {
  * @return elements read
  */
 size_t port_fread(void *ptr, size_t size, size_t nmemb, port_FILE fp) {
-    return impl_port_fread(ptr, size, nmemb, fp);
+    size_t rc = impl_port_fread(ptr, size, nmemb, fp);
+    LOG_PORT_CALL_INT((int)rc, "size: %d, nmemb: %d, fp: %p", (int)size, (int)nmemb, fp);
+    return rc;
 }
 
 int port_fclose(port_FILE fp) {
-    return impl_port_fclose(fp);
+    int rc = impl_port_fclose(fp);
+    LOG_PORT_CALL_INT(rc, "fp: %p", fp);
+    return rc;
 }
 
 int port_fseek(port_FILE fp, long offset, int whence) {
-    return impl_port_fseek(fp, offset, whence);
+    int rc = impl_port_fseek(fp, offset, whence);
+    LOG_PORT_CALL_INT(rc, "fp: %p, offset: %ld, whence: %d", fp, offset, whence);
+    return rc;
 }
 
 long port_ftell(port_FILE fp) {
-    return impl_port_ftell(fp);
+    long rc = impl_port_ftell(fp);
+    LOG_PORT_CALL_LONG(rc, "fp: %p", fp);
+    return rc;
 }
 
 int port_fputc(int c, port_FILE fp) {
-    return impl_port_fputc(c, fp);
+    int rc = impl_port_fputc(c, fp);
+#ifdef PROFILE_PUTC
+    LOG_PORT_CALL_INT(rc, "fp: %p, c: %d", fp, c);
+#endif
+    return rc;
 }
 
 int port_access(const char *path, int amode) {
-    return impl_port_access(path, amode);
+    int rc = impl_port_access(path, amode);
+    LOG_PORT_CALL_INT(rc, "path: %s, amode: %d", path, amode);
+    return rc;
 }
 
 int port_mkdir(const char *path, int _) {
-    return impl_port_mkdir(path, _);
+    int rc = impl_port_mkdir(path, _);
+    LOG_PORT_CALL_INT(rc, "path: %s", path);
+    return rc;
 }  
 
 int port_remove(const char *path) {
-    return impl_port_remove(path);
+    int rc = impl_port_remove(path);
+    LOG_PORT_CALL_INT(rc, "path: %s", path);
+    return rc;
 }
 
 // very unlike to be invoked tbh
 int port_rmdir(const char *path) {
-    return impl_port_rmdir(path);
+    int rc = impl_port_rmdir(path);
+    LOG_PORT_CALL_INT(rc, "path: %s", path);
+    return rc;
 }
 
 int port_check_provisioned() {
@@ -96,5 +135,7 @@ int port_provision(struct ss_profile *profile) {
 }
 
 size_t port_fwrite(const void *ptr, size_t size, size_t count, port_FILE fp) {
-    return impl_port_fwrite(ptr, size, count, fp);
+    size_t rc = impl_port_fwrite(ptr, size, count, fp);
+    LOG_PORT_CALL_INT((int)rc, "size: %d, count: %d, fp: %p", (int)size, (int)count, fp);
+    return rc;
 }

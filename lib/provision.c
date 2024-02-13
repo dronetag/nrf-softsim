@@ -19,7 +19,8 @@ char storage_path[] = "";
  * @param blob pointer to blob of data
  * @param size size of blob
  */
-void generate_dir_table_from_blob(struct ss_list *dirs, uint8_t *blob, size_t size) {
+void generate_dir_table_from_blob(struct cache_ctx *cache, uint8_t *blob, size_t size) {
+  struct ss_list *dirs = &cache->file_list;
   size_t cursor = 0;
   while (cursor < size) {
     uint8_t len = blob[cursor++];
@@ -32,14 +33,8 @@ void generate_dir_table_from_blob(struct ss_list *dirs, uint8_t *blob, size_t si
     name[len] = '\0';
     cursor += (len);
 
-    struct cache_entry *entry = SS_ALLOC(struct cache_entry);
-    memset(entry, 0, sizeof(struct cache_entry));
-
-    entry->key = id;
-    entry->name = name;
-    entry->_flags = (id & 0xFF00) >> 8;
-    entry->buf = NULL;
-
-    ss_list_put(dirs, &entry->list);
+    struct cache_entry *entry;
+    /* No Return ? Maybe fix check if allocation was susccessful */
+    f_cache_create_entry(cache, id, name, (id & 0xFF00) >> 8, &entry);
   }
 }
