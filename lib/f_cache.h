@@ -21,14 +21,19 @@ struct cache_entry {
     uint8_t _b_dirty;  // buf is divergent from NVS
     uint8_t _cache_hits;
     char *name;  // path // key for lookup
+    void *user;
 };
 
+typedef void* (*cache_entry_alloc_cb)(size_t len);
+typedef void (*cache_entry_free_cb)(void *);
 typedef int (*cache_entry_write_cb)(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len);
 typedef int (*cache_entry_read_cb)(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len);
 typedef int (*cache_entry_remove_cb)(struct cache_ctx *ctx, struct cache_entry *entry);
 typedef uint16_t (*cache_entry_length_cb)(struct cache_ctx *ctx, struct cache_entry *entry);
 
 struct cache_strorage_funcs {
+    cache_entry_alloc_cb alloc;
+    cache_entry_free_cb free;
     cache_entry_write_cb write;
     cache_entry_read_cb read;
     cache_entry_remove_cb remove;
@@ -47,6 +52,8 @@ struct cache_ctx {
 struct cache_entry *f_cache_find_buffer(struct cache_entry *entry, struct cache_ctx *cache);
 struct cache_entry *f_cache_find_by_name(const char *name, struct cache_ctx *cache);
 void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs);
+void *f_cache_alloc(struct cache_ctx *cache, size_t len);
+void f_cache_free(struct cache_ctx *cache, void *ptr);
 bool f_cache_empty(struct cache_ctx *cache);
 int f_cache_read_to_cache(struct cache_ctx *cache, struct cache_entry *entry);
 int f_cache_fread(struct cache_ctx *cache, struct cache_entry *entry, void *ptr, size_t size, size_t nmemb);
@@ -58,5 +65,6 @@ int f_cache_remove(struct cache_ctx *cache, struct cache_entry *entry);
 size_t f_cache_fwrite(struct cache_ctx *cache, struct cache_entry *entry, const void *prt, size_t size, size_t count);
 int f_cache_fopen(struct cache_ctx *cache, struct cache_entry *entry);
 void f_cache_close(struct cache_ctx *cache);
+int f_cache_create_entry(struct cache_ctx *cache, uint16_t key, char *name, uint16_t flags, struct cache_entry **out_entry);
 
 #endif /* _F_CACHE_H_ */

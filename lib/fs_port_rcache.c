@@ -9,31 +9,102 @@
 
 #include "profile.h"
 #include "impl_fs_port.h"
+#include "f_cache.h"
 
 
-LOG_MODULE_REGISTER(softsim_fs_port, 4);
-// LOG_MODULE_REGISTER(softsim_fs_port, CONFIG_SOFTSIM_LOG_LEVEL);
+// LOG_MODULE_REGISTER(softsim_fs_port, 4);
+LOG_MODULE_REGISTER(softsim_fs_port, CONFIG_SOFTSIM_LOG_LEVEL);
 
 #define ALLOC_FILENAME CONFIG_SOFTSIM_FS_PATH_LEN
 
 struct rcache_file {
-    sys_snode_t s_node;
     bool cached;
-    bool opened;
-    char *fileName;
+    struct cache_entry *entry;
     impl_port_FILE *fp;
 };
 
 struct rcache_ctx {
-    sys_slist_t cached_files;
-    int cached_files_len;
+    struct cache_ctx cache;
 };
 
 static struct rcache_ctx rcache;
 
+#ifndef SEEK_SET
+#define SEEK_SET 0 /* set file offset to offset */
+#endif
+#ifndef SEEK_CUR
+#define SEEK_CUR 1 /* set file offset to current plus offset */
+#endif
+#ifndef SEEK_END
+#define SEEK_END 2 /* set file offset to EOF plus offset */
+#endif
+
+static int port_fs_cache_entry_write(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len)
+{
+    ARG_UNUSED(ctx);
+    impl_port_FILE f = impl_port_fopen(entry->name, "w");
+    if(f == NULL) {
+        return -EINVAL;
+    }
+    int rc = impl_port_fwrite(buffer, len, 1, f);
+    if(rc != len) {
+        return -1;
+    }
+    impl_port_fclose(f);
+    return len;
+}
+
+static int port_fs_cache_entry_read(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len)
+{
+    ARG_UNUSED(ctx);
+    impl_port_FILE f = impl_port_fopen(entry->name, "r");
+    if(f == NULL) {
+        return -EINVAL;
+    }
+    int rc = impl_port_fread(buffer, len, 1, f);
+    impl_port_fclose(f);
+    return rc;
+}
+
+static uint16_t port_fs_cache_entry_length(struct cache_ctx *ctx, struct cache_entry *entry)
+{
+    ARG_UNUSED(ctx);
+    /* TODO: Handle errors? */
+    /* Open seek tell */
+    impl_port_FILE f = impl_port_fopen(entry->name, "r");
+    if(f == NULL) {
+        return 0;
+    }
+    int rc = impl_port_fseek(f, 0, SEEK_END);
+    if(rc) {
+        return 0;
+    }
+    long size = impl_port_ftell(f);
+    impl_port_fclose(f);
+
+    if(size >= 0) {
+        LOG_INF("Returning size for file: %s size: %ld", entry->name, size);
+        return size;
+    }
+    LOG_ERR("Tell failed: %d", (int)size);
+    return 0;
+}
+
+static int port_fs_cache_entry_remove(struct cache_ctx *ctx, struct cache_entry *entry)
+{
+    ARG_UNUSED(ctx);
+    return impl_port_remove(entry->name);
+}
+
+struct cache_strorage_funcs fs_cache_storage_funcs = {
+    .read = port_fs_cache_entry_read,
+    .write = port_fs_cache_entry_write,
+    .length = port_fs_cache_entry_length,
+    .remove = port_fs_cache_entry_remove
+};
+
 int init_fs() {
-    rcache.cached_files_len = 0;
-    sys_slist_init(&rcache.cached_files);
+    f_cache_init(&rcache.cache, &fs_cache_storage_funcs);
     return impl_init_fs();
 }
 
@@ -42,36 +113,8 @@ int init_fs() {
  * I.e. when the modem goes to cfun=0 or cfun=4
  * */
 int deinit_fs() {
-    sys_snode_t *nPtr;
-    /* Find whether the file is already open */
-    SYS_SLIST_FOR_EACH_NODE(&rcache.cached_files, nPtr) {
-        struct rcache_file *cSPtr = CONTAINER_OF(nPtr, struct rcache_file, s_node);
-        sys_slist_find_and_remove(&rcache.cached_files, nPtr);
-
-        /* Close file and free it */
-        cSPtr->cached = false;
-        port_fclose(cSPtr);
-        rcache.cached_files_len--;
-    }
-    /* Clear the slist just to be sure */
-    sys_slist_init(&rcache.cached_files);
+    f_cache_close(&rcache.cache);
     return impl_deinit_fs();
-}
-
-#define SEEK_SET	0	/* Seek from beginning of file.  */
-void rcache_close_file(struct rcache_file *ptr)
-{
-    if(ptr->opened) {
-        LOG_ERR("Attempting to close cached file that is opened");
-        return;
-    }
-    sys_slist_find_and_remove(&rcache.cached_files, &ptr->s_node);
-
-    /* Close file and free it */
-    LOG_DBG("Closing rcache_file: %s", ptr->fileName);
-    ptr->cached = false;
-    port_fclose(ptr);
-    rcache.cached_files_len--;
 }
 
 /**
@@ -81,74 +124,51 @@ void rcache_close_file(struct rcache_file *ptr)
  * @return pointer to a file handle
  */
 port_FILE port_fopen(char *path, char *mode) {
-    bool cached = strcmp(mode, "r") == 0;
-
-    struct rcache_file *fPtr = NULL;
-    sys_snode_t *nPtr;
-    /* Find whether the file is already open */
-    SYS_SLIST_FOR_EACH_NODE(&rcache.cached_files, nPtr) {
-        struct rcache_file *cSPtr = CONTAINER_OF(nPtr, struct rcache_file, s_node);
-        if(strcmp(cSPtr->fileName, path) == 0) {
-            fPtr = cSPtr;
-            break;
-        }
-    }
-    if(!cached && fPtr) {
-        LOG_DBG("File: %s closed due to change of mode", path);
-        /* Needs to close the file to allow other operation sync */
-        rcache_close_file(fPtr);
-        fPtr = NULL;
+    int rc;
+    struct cache_entry *entry = f_cache_find_by_name(path, &rcache.cache);
+    /* Check whether the file exists already */
+    if(entry && entry->user) {
+        LOG_ERR("Opening already opened cache file!!!");
+        /* TODO: What to do here ? */
+        assert(false);
     }
 
     struct rcache_file *cPtr;
-    if(fPtr == NULL) {
-        LOG_DBG("Allocating rcache_file: %s", path);
-        cPtr = SS_ALLOC(struct rcache_file);
-        cPtr->fileName = NULL;
+    LOG_DBG("Allocating rcache_file: %s", path);
+    cPtr = SS_ALLOC(struct rcache_file);
+    if(!entry) {
+        char *name_alloc = f_cache_alloc(&rcache.cache, strlen(path)+1);
+        if(name_alloc) {
+            strcpy(name_alloc, path);
+            rc = f_cache_create_entry(&rcache.cache, 0, name_alloc, 0, &entry);
+            if(rc) {
+                /* If no memory for the cache entry free the name */
+                f_cache_free(&rcache.cache, name_alloc);
+            }
+            /* TODO: Entries are not removed so the names are allocated indefinitly */
+        }
+    }
+
+    /* Mark whether the allocation was successfull and the file is cached */
+    cPtr->cached = entry != NULL;
+    cPtr->entry = entry;
+    entry->user = cPtr;
+
+    if(cPtr->cached) {
+        rc = f_cache_fopen(&rcache.cache, entry);
+        if(rc) {
+            SS_FREE(cPtr);
+            return NULL;
+        }
+    } else {
+        /* Need to actualy open the file */
         cPtr->fp = impl_port_fopen(path, mode);
         if(cPtr->fp == NULL) {
             SS_FREE(cPtr);
             return NULL;
         }
-
-        /* Only now activate caching */
-        if(cached) {
-            LOG_DBG("File rcache_file activated");
-            cPtr->fileName = k_malloc(strlen(path)+1);
-            strcpy(cPtr->fileName, path);
-
-            if(rcache.cached_files_len >= CONFIG_SOFTSIM_FS_READ_FILE_CACHE_SIZE) {
-                LOG_DBG("Searching for file to close");
-                struct rcache_file *cSPtr = NULL;
-                sys_snode_t *nPtr = NULL;
-                SYS_SLIST_FOR_EACH_NODE(&rcache.cached_files, nPtr) {
-                    cSPtr = CONTAINER_OF(nPtr, struct rcache_file, s_node);
-                    /* Find first file that is not opened */
-                    if(!cSPtr->opened) {
-                        break;
-                    }
-                }
-                if(cSPtr == NULL) {
-                    LOG_ERR("No files in cache should not happen");
-                } else {
-                    rcache_close_file(cSPtr);
-                }
-            }
-            sys_slist_append(&rcache.cached_files, &cPtr->s_node);
-            rcache.cached_files_len++;
-        }
-    } else {
-        cPtr = fPtr;
-        /* Rewind the file */
-        impl_port_fseek(cPtr->fp, 0, SEEK_SET);
-
-
-        /* Simple LRU scheme just push to back */
-        sys_slist_find_and_remove(&rcache.cached_files, &cPtr->s_node);
-        sys_slist_append(&rcache.cached_files, &cPtr->s_node);
     }
-    cPtr->opened = true;
-    cPtr->cached = cached;
+
     return cPtr;
 }
 
@@ -163,37 +183,55 @@ port_FILE port_fopen(char *path, char *mode) {
  */
 size_t port_fread(void *ptr, size_t size, size_t nmemb, port_FILE fp) {
     struct rcache_file *cPtr = fp;
-    return impl_port_fread(ptr, size, nmemb, cPtr->fp);
+    if(cPtr->cached) {
+        return f_cache_fread(&rcache.cache, cPtr->entry, ptr, size, nmemb);
+    } else {
+        return impl_port_fread(ptr, size, nmemb, cPtr->fp);
+    }
 }
 
 int port_fclose(port_FILE fp) {
     struct rcache_file *cPtr = fp;
     /* When file is cached do not free or close */
-    cPtr->opened = false;
-    if(cPtr->cached)
-        return 0;
-    if(cPtr->fileName) {
-        SS_FREE(cPtr->fileName);
-        cPtr->fileName = NULL;
-    }
     impl_port_FILE impl_fp = cPtr->fp;
+
+    int rc;
+    if(cPtr->cached) {
+        /* Remove user from the cache entry */
+        cPtr->entry->user = NULL;
+        rc = f_cache_fclose(&rcache.cache, cPtr->entry);
+    } else {
+        rc = impl_port_fclose(impl_fp);
+    }
     SS_FREE(cPtr);
-    return impl_port_fclose(impl_fp);
+    return rc;
 }
 
 int port_fseek(port_FILE fp, long offset, int whence) {
     struct rcache_file *cPtr = fp;
-    return impl_port_fseek(cPtr->fp, offset, whence);
+    if(cPtr->cached) {
+        return f_cache_fseek(&rcache.cache, cPtr->entry, offset, whence);
+    } else {
+        return impl_port_fseek(cPtr->fp, offset, whence);
+    }
 }
 
 long port_ftell(port_FILE fp) {
     struct rcache_file *cPtr = fp;
-    return impl_port_ftell(cPtr->fp);
+    if(cPtr->cached) {
+        return f_cache_ftell(&rcache.cache, cPtr->entry);
+    } else {
+        return impl_port_ftell(cPtr->fp);
+    }
 }
 
 int port_fputc(int c, port_FILE fp) {
     struct rcache_file *cPtr = fp;
-    return impl_port_fputc(c, cPtr->fp);
+    if(cPtr->cached) {
+        return f_cache_putc(&rcache.cache, cPtr->entry, c);
+    } else {
+        return impl_port_fputc(c, cPtr->fp);
+    }
 }
 
 int port_access(const char *path, int amode) {
@@ -230,5 +268,9 @@ int port_provision(struct ss_profile *profile) {
 
 size_t port_fwrite(const void *ptr, size_t size, size_t count, port_FILE fp) {
     struct rcache_file *cPtr = fp;
-    return impl_port_fwrite(ptr, size, count, cPtr->fp);
+    if(cPtr->cached) {
+        return f_cache_fwrite(&rcache.cache, cPtr->entry, ptr, size, count);
+    } else {
+        return impl_port_fwrite(ptr, size, count, cPtr->fp);
+    }
 }

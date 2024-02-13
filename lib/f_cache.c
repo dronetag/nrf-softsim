@@ -59,7 +59,7 @@ int f_cache_read_to_cache(struct cache_ctx *cache, struct cache_entry *entry) {
 
         // should buffer be freed
         if (entry->_l > tmp->_b_size) {
-            SS_FREE(tmp->buf);
+            f_cache_free(cache, tmp->buf);
         } else {  // or reused
             buffer_size = tmp->_b_size;
             buffer_to_use = tmp->buf;
@@ -74,7 +74,7 @@ int f_cache_read_to_cache(struct cache_ctx *cache, struct cache_entry *entry) {
     if (!buffer_to_use) {
         buffer_size = entry->_l;
         LOG_DBG("Allocating buffer of size %d", buffer_size);
-        buffer_to_use = SS_ALLOC_N(buffer_size * sizeof(uint8_t));
+        buffer_to_use = f_cache_alloc(cache, buffer_size * sizeof(uint8_t));
     }
 
     if (!buffer_to_use) {
@@ -87,7 +87,7 @@ int f_cache_read_to_cache(struct cache_ctx *cache, struct cache_entry *entry) {
 
     if (rc < 0) {
         LOG_ERR("NVS read failed: %d\n", rc);
-        SS_FREE(buffer_to_use);
+        f_cache_free(cache, buffer_to_use);
         return -ENOMEM;
     }
 
@@ -255,7 +255,7 @@ int f_cache_putc(struct cache_ctx *cache, struct cache_entry *entry, int c)
   if (entry->_p >= entry->_b_size) {
     uint8_t *old_buffer = entry->buf;
     size_t old_size = entry->_b_size;
-    entry->buf = SS_ALLOC_N(entry->_b_size + 20);
+    entry->buf = f_cache_alloc(cache, entry->_b_size + 20);
 
     if (!entry->buf) {
       entry->buf = old_buffer;
@@ -285,10 +285,10 @@ int f_cache_remove(struct cache_ctx *cache, struct cache_entry *entry)
   // should we be smarter about this?
   cache->storage_f->remove(cache, entry);
 
-  if (entry->buf) SS_FREE(entry->buf);
+  if (entry->buf) f_cache_free(cache, entry->buf);
 
-  SS_FREE(entry->name);
-  SS_FREE(entry);
+  f_cache_free(cache, entry->name);
+  f_cache_free(cache, entry);
 
   return 0;
 }
@@ -309,7 +309,7 @@ size_t f_cache_fwrite(struct cache_ctx *cache, struct cache_entry *entry, const 
     uint8_t *oldBuffer = entry->buf;
     const size_t oldSize = entry->_b_size;
 
-    entry->buf = SS_ALLOC_N(requiredBufferSize);
+    entry->buf = f_cache_alloc(cache, requiredBufferSize);
 
     if (!entry->buf) {
       entry->buf = oldBuffer;
@@ -319,7 +319,7 @@ size_t f_cache_fwrite(struct cache_ctx *cache, struct cache_entry *entry, const 
     }
 
     memcpy(entry->buf, oldBuffer, oldSize);
-    SS_FREE(oldBuffer);
+    f_cache_free(cache, oldBuffer);
   }
   const size_t buffer_left = entry->_b_size - entry->_p;
   const size_t elements_to_copy = buffer_left > size * count ? count : buffer_left / size;
@@ -382,9 +382,45 @@ void f_cache_close(struct cache_ctx *cache)
     ss_list_remove(&cursor->list);
 
     if (cursor->buf) {
-      SS_FREE(cursor->buf);
+      f_cache_free(cache, cursor->buf);
     }
-    SS_FREE(cursor->name);
-    SS_FREE(cursor);
+    f_cache_free(cache, cursor->name);
+    f_cache_free(cache, cursor);
+  }
+}
+
+int f_cache_create_entry(struct cache_ctx *cache, uint16_t key, char *name, uint16_t flags, struct cache_entry **out_entry)
+{
+  struct ss_list *dirs = &cache->file_list;
+  struct cache_entry *entry = f_cache_alloc(cache, sizeof(struct cache_entry));
+  if(!entry) {
+    return -ENOMEM;
+  }
+  memset(entry, 0, sizeof(struct cache_entry));
+
+  entry->key = key;
+  entry->name = name;
+  entry->_flags =flags;
+  entry->buf = NULL;
+  ss_list_put(dirs, &entry->list);
+  *out_entry = entry;
+  return 0;
+}
+
+void f_cache_free(struct cache_ctx *cache, void *ptr)
+{
+  if(cache->storage_f->free) {
+    cache->storage_f->free(ptr);
+  } else {
+    SS_FREE(ptr);
+  }
+}
+
+void *f_cache_alloc(struct cache_ctx *cache, size_t len)
+{
+  if(cache->storage_f->alloc) {
+    return cache->storage_f->alloc(len);
+  } else {
+    return SS_ALLOC_N(len);
   }
 }
