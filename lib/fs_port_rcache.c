@@ -171,10 +171,18 @@ port_FILE port_fopen(char *path, char *mode) {
             return cPtr;
         } else if(rc != -ENOMEM) {
             /* Cache is out of space */
+            if(entry) {
+                f_cache_delete_entry(&rcache.cache, entry);
+            }
             SS_FREE(cPtr);
             return NULL;
         }
         /* Fall into uncached variant */
+    }
+
+    /* Delete the entry if exists we no longer need it */
+    if(entry) {
+        f_cache_delete_entry(&rcache.cache, entry);
     }
     cPtr->cached = false;
     cPtr->entry = NULL;

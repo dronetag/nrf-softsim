@@ -72,9 +72,7 @@ int f_cache_read_to_cache(struct cache_ctx *cache, struct cache_entry *entry) {
         tmp->_b_dirty = 0;
 
         if(cache->free_entries) {
-            f_cache_free(cache, tmp->name);
-            f_cache_free(cache, tmp);
-            ss_list_remove(&tmp->list);
+            f_cache_delete_entry(cache, tmp);
         }
     }
 
@@ -378,11 +376,11 @@ void f_cache_close(struct cache_ctx *cache)
   LOG_DBG("Closing cache");
 
   /* Free all memory allocated by cache and
-   * commit changes to NVS
+   * commit changes to backend storage.
    */
   SS_LIST_FOR_EACH_SAVE(&cache->file_list, cursor, pre_cursor, struct cache_entry, list) {
     if (cursor->_b_dirty) {
-      LOG_INF("Softsim stop - committing %s to NVS", cursor->name);
+      LOG_DBG("Softsim stop - committing %s", cursor->name);
       cache->storage_f->write(cache, cursor, cursor->buf, cursor->_l);
     }
 
@@ -430,4 +428,11 @@ void *f_cache_alloc(struct cache_ctx *cache, size_t len)
   } else {
     return SS_ALLOC_N(len);
   }
+}
+
+void f_cache_delete_entry(struct cache_ctx *cache, struct cache_entry *entry)
+{
+  f_cache_free(cache, entry->name);
+  f_cache_free(cache, entry);
+  ss_list_remove(&entry->list);
 }

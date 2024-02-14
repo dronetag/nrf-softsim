@@ -67,5 +67,6 @@ size_t f_cache_fwrite(struct cache_ctx *cache, struct cache_entry *entry, const 
 int f_cache_fopen(struct cache_ctx *cache, struct cache_entry *entry);
 void f_cache_close(struct cache_ctx *cache);
 int f_cache_create_entry(struct cache_ctx *cache, uint16_t key, char *name, uint16_t flags, struct cache_entry **out_entry);
+void f_cache_delete_entry(struct cache_ctx *cache, struct cache_entry *entry);
 
 #endif /* _F_CACHE_H_ */
