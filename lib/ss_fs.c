@@ -213,6 +213,9 @@ int impl_deinit_fs() {
 impl_port_FILE impl_port_fopen(char *path, char *mode) {
   int rc = 0;
   struct ss_fs_file *f = SS_ALLOC(struct ss_fs_file);
+  if(!f) {
+      return NULL;
+  }
 
   /* Set errno ? */
   rc = ss_fs_file_init(f);
