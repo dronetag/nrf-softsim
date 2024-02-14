@@ -43,6 +43,7 @@ struct cache_strorage_funcs {
 struct cache_ctx {
     struct ss_list file_list;
     struct cache_strorage_funcs *storage_f;
+    bool free_entries;
 };
 
 /**
@@ -51,7 +52,7 @@ struct cache_ctx {
  */
 struct cache_entry *f_cache_find_buffer(struct cache_entry *entry, struct cache_ctx *cache);
 struct cache_entry *f_cache_find_by_name(const char *name, struct cache_ctx *cache);
-void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs);
+void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs, bool free_entries);
 void *f_cache_alloc(struct cache_ctx *cache, size_t len);
 void f_cache_free(struct cache_ctx *cache, void *ptr);
 bool f_cache_empty(struct cache_ctx *cache);

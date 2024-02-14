@@ -181,7 +181,7 @@ int init_nvs(bool erase) {
         return rc;
     }
 #ifdef NVS_BACKUP_PARTITION_ID
-    rc = init_nvs_from_id(&fs, NVS_BACKUP_PARTITION_ID, false);
+    rc = init_nvs_from_id(&fs_backup, NVS_BACKUP_PARTITION_ID, false);
     if(rc) {
         return rc;
     }

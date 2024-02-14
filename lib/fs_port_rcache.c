@@ -107,7 +107,7 @@ struct cache_strorage_funcs fs_cache_storage_funcs = {
 };
 
 int init_fs() {
-    f_cache_init(&rcache.cache, &fs_cache_storage_funcs);
+    f_cache_init(&rcache.cache, &fs_cache_storage_funcs, true);
     return impl_init_fs();
 }
 

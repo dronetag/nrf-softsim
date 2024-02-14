@@ -12,7 +12,7 @@ LOG_MODULE_REGISTER(softsim_fcache, CONFIG_SOFTSIM_LOG_LEVEL);
 
 // #define PROFILE_DATA
 
-void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs)
+void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs, bool free_entries)
 {
     assert(funcs->length);
     assert(funcs->read);
@@ -20,6 +20,7 @@ void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs)
     assert(funcs->write);
     ss_list_init(&cache->file_list);
     cache->storage_f = funcs;
+    cache->free_entries = free_entries;
 }
 
 bool f_cache_empty(struct cache_ctx *cache)
@@ -69,6 +70,12 @@ int f_cache_read_to_cache(struct cache_ctx *cache, struct cache_entry *entry) {
         tmp->buf = NULL;
         tmp->_b_size = 0;
         tmp->_b_dirty = 0;
+
+        if(cache->free_entries) {
+            f_cache_free(cache, tmp->name);
+            f_cache_free(cache, tmp);
+            ss_list_remove(&tmp->list);
+        }
     }
 
     if (!buffer_to_use) {
