@@ -138,6 +138,15 @@ int main(void) {
   int32_t err;
   LOG_INF("SoftSIM sample started.");
 
+#ifndef CONFIG_SOFTSIM_AUTO_INIT
+  nrf_softsim_init();
+
+  err = nrf_modem_at_printf("AT%%CSUS=2");
+  if (err) {
+    LOG_ERR("Failed to select software SIM.");
+  }
+#endif
+
   err = lte_lc_init();
   if (err) {
     LOG_ERR("Failed to initialize nrf link control, err %d\n", err);
