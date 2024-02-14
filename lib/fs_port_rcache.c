@@ -132,6 +132,7 @@ port_FILE port_fopen(char *path, char *mode) {
         /* TODO: What to do here ? */
         assert(false);
     }
+    bool read_only = strcmp(mode, "r") == 0;
 
     struct rcache_file *cPtr;
     LOG_DBG("Allocating rcache_file: %s", path);
@@ -140,7 +141,13 @@ port_FILE port_fopen(char *path, char *mode) {
         char *name_alloc = f_cache_alloc(&rcache.cache, strlen(path)+1);
         if(name_alloc) {
             strcpy(name_alloc, path);
-            rc = f_cache_create_entry(&rcache.cache, 0, name_alloc, 0, &entry);
+            int flags = 0;
+            if(read_only) {
+                flags |= FS_READ_ONLY;
+            } else {
+                flags |= FS_COMMIT_ON_CLOSE;
+            }
+            rc = f_cache_create_entry(&rcache.cache, 0, name_alloc, flags, &entry);
             if(rc) {
                 /* If no memory for the cache entry free the name */
                 f_cache_free(&rcache.cache, name_alloc);
@@ -156,19 +163,26 @@ port_FILE port_fopen(char *path, char *mode) {
 
     if(cPtr->cached) {
         rc = f_cache_fopen(&rcache.cache, entry);
-        if(rc) {
+        if(rc == 0) {
+            /* success fopen */
+            return cPtr;
+        } else if(rc != -ENOMEM) {
+            /* Cache is out of space */
             SS_FREE(cPtr);
             return NULL;
         }
-    } else {
-        /* Need to actualy open the file */
-        cPtr->fp = impl_port_fopen(path, mode);
-        if(cPtr->fp == NULL) {
-            SS_FREE(cPtr);
-            return NULL;
-        }
+        /* Fall into uncached variant */
     }
+    cPtr->cached = false;
+    cPtr->entry = NULL;
 
+    LOG_DBG("Using uncached variant due to lack of resources");
+    /* Need to actualy open the file */
+    cPtr->fp = impl_port_fopen(path, mode);
+    if(cPtr->fp == NULL) {
+        SS_FREE(cPtr);
+        return NULL;
+    }
     return cPtr;
 }
 
