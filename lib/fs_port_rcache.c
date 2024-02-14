@@ -42,6 +42,7 @@ static struct rcache_ctx rcache;
 static int port_fs_cache_entry_write(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len)
 {
     ARG_UNUSED(ctx);
+    LOG_DBG("FCache write: %s", entry->name);
     impl_port_FILE f = impl_port_fopen(entry->name, "w");
     if(f == NULL) {
         return -EINVAL;
@@ -57,6 +58,7 @@ static int port_fs_cache_entry_write(struct cache_ctx *ctx, struct cache_entry *
 static int port_fs_cache_entry_read(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len)
 {
     ARG_UNUSED(ctx);
+    LOG_DBG("FCache read: %s", entry->name);
     impl_port_FILE f = impl_port_fopen(entry->name, "r");
     if(f == NULL) {
         return -EINVAL;
@@ -69,6 +71,7 @@ static int port_fs_cache_entry_read(struct cache_ctx *ctx, struct cache_entry *e
 static uint16_t port_fs_cache_entry_length(struct cache_ctx *ctx, struct cache_entry *entry)
 {
     ARG_UNUSED(ctx);
+    LOG_DBG("FCache length: %s", entry->name);
     /* TODO: Handle errors? */
     /* Open seek tell */
     impl_port_FILE f = impl_port_fopen(entry->name, "r");
@@ -83,7 +86,6 @@ static uint16_t port_fs_cache_entry_length(struct cache_ctx *ctx, struct cache_e
     impl_port_fclose(f);
 
     if(size >= 0) {
-        LOG_INF("Returning size for file: %s size: %ld", entry->name, size);
         return size;
     }
     LOG_ERR("Tell failed: %d", (int)size);
@@ -93,6 +95,7 @@ static uint16_t port_fs_cache_entry_length(struct cache_ctx *ctx, struct cache_e
 static int port_fs_cache_entry_remove(struct cache_ctx *ctx, struct cache_entry *entry)
 {
     ARG_UNUSED(ctx);
+    LOG_DBG("FCache remove: %s", entry->name);
     return impl_port_remove(entry->name);
 }
 
