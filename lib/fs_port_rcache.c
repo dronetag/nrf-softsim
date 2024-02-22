@@ -12,8 +12,8 @@
 #include "impl_fs_port.h"
 #include "f_cache.h"
 
-#define CACHE_ENTRIES 20
-#define PRECACHE_FILES
+#define CACHE_ENTRIES CONFIG_SOFTSIM_FS_READ_FILE_CACHE_SIZE
+// #define PRECACHE_FILES
 // #define CACHE_ONLY_PRECACHED_FILES
 
 #include "../littlefs/scripts/ss_static_files.h"
