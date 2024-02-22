@@ -11,13 +11,19 @@
 #include "profile.h"
 #include "impl_fs_port.h"
 
-// LOG_MODULE_REGISTER(softsim_fs, 4);
 LOG_MODULE_REGISTER(softsim_fs, CONFIG_SOFTSIM_LOG_LEVEL);
-#define DEBUG_PROFILE_PROVISION
+
+// #define DEBUG_PROFILE_PROVISION
+// #define DEBUG_PROFILE_OPERATION_DURATION
+// #define DEBUG_FS_CALLS
+
+#ifdef DEBUG_PROFILE_OPERATION_DURATION
+#define OP_PROF(...) LOG_WRN(__VA_ARGS__)
+#else
+#define OP_PROF(...)
+#endif
 
 
-
-//#define DEBUG_FS_CALLS
 
 #ifdef DEBUG_FS_CALLS
 #define FS_LOG_DBG(...) LOG_DBG(__VA_ARGS__)
@@ -223,6 +229,7 @@ int impl_deinit_fs() {
  * @return pointer to a file handle
  */
 impl_port_FILE impl_port_fopen(char *path, char *mode) {
+  uint32_t start = k_uptime_get_32();
   int rc = 0;
   struct ss_fs_file *f = SS_ALLOC(struct ss_fs_file);
   if(!f) {
@@ -250,6 +257,7 @@ impl_port_FILE impl_port_fopen(char *path, char *mode) {
 
   rc = fs_open(&f->file, file_path, f_m);
   uint32_t end = k_uptime_get_32();
+  OP_PROF("Open duration: %u", end-start);
   if(rc) {
     LOG_ERR("Failed to open file: %s", file_path);
     SS_FREE(f);
@@ -271,8 +279,11 @@ size_t impl_port_fread(void *ptr, size_t size, size_t nmemb, impl_port_FILE fp) 
   if (nmemb == 0 || size == 0) {
     return 0;
   }
+  uint32_t start = k_uptime_get_32();
   struct ss_fs_file *f = fp;
   int rc = fs_read(&f->file, ptr, size*nmemb);
+  uint32_t end = k_uptime_get_32();
+  OP_PROF("Read duration: %u", end-start);
   if(rc < 0) {
     LOG_ERR("Failed to read file");
     return 0;
@@ -343,6 +354,7 @@ int impl_port_remove(const char *path) {
 int impl_port_size(impl_port_FILE fp)
 {
   struct ss_fs_file *f = fp;
+  uint32_t start = k_uptime_get_32();
   long offset = fs_tell(&f->file);
   if(offset < 0) {
     return 0;
@@ -359,6 +371,8 @@ int impl_port_size(impl_port_FILE fp)
   if(rc) {
     return 0;
   }
+  uint32_t end = k_uptime_get_32();
+  OP_PROF("Size duration: %u", end-start);
   return size;
 }
 
