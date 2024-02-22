@@ -13,6 +13,18 @@
 
 // LOG_MODULE_REGISTER(softsim_fs, 4);
 LOG_MODULE_REGISTER(softsim_fs, CONFIG_SOFTSIM_LOG_LEVEL);
+#define DEBUG_PROFILE_PROVISION
+
+
+
+//#define DEBUG_FS_CALLS
+
+#ifdef DEBUG_FS_CALLS
+#define FS_LOG_DBG(...) LOG_DBG(__VA_ARGS__)
+#else
+#define FS_LOG_DBG(...)
+#endif
+
 #define DIR_ID (1UL)
 
 #define IMSI_PATH "/3f00/7ff0/6f07"
@@ -76,13 +88,15 @@ static int ss_fs_inline_mkdir(const char *path)
     strncpy(mkdir_path, path, sizeof(mkdir_path));
     /* Create all folders in the path */
     int part = 0;
+    bool last = false;
     char *pathPartStart = mkdir_path;
     char *pathPartEnd = NULL;
     while(true) {
         pathPartEnd = strchr(pathPartStart, '/');
         /* Reached the end */
         if(pathPartEnd == NULL) {
-            break;
+            pathPartEnd = pathPartStart + strlen(pathPartStart);
+            last = true;
         }
         part++;
 
@@ -101,6 +115,9 @@ static int ss_fs_inline_mkdir(const char *path)
                     return rc;
                 }
             }
+            if(last) {
+                break;
+            }
             /* After creation return it back */
             *pathPartEnd = '/';
         }
@@ -113,11 +130,6 @@ static int ss_fs_inline_mkdir(const char *path)
 static int ss_fs_inline_write(const char *path, const void *ptr, size_t size)
 {
     int rc;
-    rc = ss_fs_inline_mkdir(path);
-    if(rc) {
-        return rc;
-    }
-
     struct fs_file_t f;
     fs_file_t_init(&f);
     rc = fs_open(&f, path, FS_O_WRITE | FS_O_CREATE);
@@ -227,7 +239,7 @@ impl_port_FILE impl_port_fopen(char *path, char *mode) {
   char file_path[CONFIG_SOFTSIM_FS_PATH_LEN] = CONFIG_SOFTSIM_FS_BACKEND_PREFIX;
   strncpy(file_path+prefLen, path, sizeof(file_path)-prefLen);
 
-  LOG_DBG("open path: %s, mode: %s", file_path, mode);
+  FS_LOG_DBG("open path: %s, mode: %s", file_path, mode);
 
   /* TODO: Parse mode */
   rc = fs_open(&f->file, file_path, FS_O_RDWR | FS_O_CREATE);
@@ -264,7 +276,7 @@ size_t impl_port_fread(void *ptr, size_t size, size_t nmemb, impl_port_FILE fp) 
 
 int impl_port_fclose(impl_port_FILE fp) {
   struct ss_fs_file *f = fp;
-  LOG_DBG("close file");
+  FS_LOG_DBG("close file");
   int rc = fs_close(&f->file);
   if(rc) {
     LOG_ERR("Failed to close file");
@@ -367,6 +379,17 @@ int impl_port_provision(struct ss_profile *profile) {
   }
 
 #ifdef CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE
+  for(int i = 0; i < onomondo_sf_dirs_len; i++) {
+    const size_t prefLen = sizeof(CONFIG_SOFTSIM_FS_BACKEND_PREFIX)-1;
+    char dir_path[CONFIG_SOFTSIM_FS_PATH_LEN] = CONFIG_SOFTSIM_FS_BACKEND_PREFIX;
+    strncpy(dir_path+prefLen, onomondo_sf_dirs[i].name, sizeof(dir_path)-prefLen);
+
+    rc = ss_fs_inline_mkdir(dir_path);
+    if(rc < 0) {
+          LOG_ERR("Failed to provision directory: %s - rc: %d", onomondo_sf_dirs[i].name, rc);
+          return rc;
+    }
+  }
   for(int i = 0; i < onomondo_sf_files_len; i++) {
     const size_t prefLen = sizeof(CONFIG_SOFTSIM_FS_BACKEND_PREFIX)-1;
     char file_path[CONFIG_SOFTSIM_FS_PATH_LEN] = CONFIG_SOFTSIM_FS_BACKEND_PREFIX;
@@ -374,12 +397,19 @@ int impl_port_provision(struct ss_profile *profile) {
 
     rc = ss_fs_inline_write(file_path, onomondo_sf_files[i].data, onomondo_sf_files[i].size);
     if(rc < 0) {
-        LOG_ERR("Failed to provision file: %s - rc: %d", file_path, rc);
+      LOG_ERR("Failed to provision file: %s - rc: %d", file_path, rc);
+      return rc;
     }
     softsim_watchdog_feed();
   }
 #endif
 
+#ifdef DEBUG_PROFILE_PROVISION
+  LOG_HEXDUMP_DBG(profile->IMSI, IMSI_LEN, IMSI_PATH);
+  LOG_HEXDUMP_DBG(profile->ICCID, ICCID_LEN, ICCID_PATH);
+  LOG_HEXDUMP_DBG(profile->A001, sizeof(profile->A001), A001_PATH);
+  LOG_HEXDUMP_DBG(profile->A004, sizeof(profile->A004), A004_PATH);
+#endif
 
 #ifdef CONFIG_SOFTSIM_FS_BACKUP
   /* TODO: Remount as write mount. The read only mount should be almost impossible to corrupt */
