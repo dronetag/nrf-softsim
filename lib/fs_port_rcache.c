@@ -14,9 +14,10 @@
 
 #define CACHE_ENTRIES 20
 #define PRECACHE_FILES
+// #define CACHE_ONLY_PRECACHED_FILES
 
 #include "../littlefs/scripts/ss_static_files.h"
-LOG_MODULE_REGISTER(softsim_fs_port, CONFIG_SOFTSIM_LOG_LEVEL);
+
 /* Will write out the contents of profile files for debugging purposes to ensure consistency of these files */
 // #define DEBUG_PROFILE_FILES
 // #define DEBUG_ALL_FILES
@@ -57,8 +58,7 @@ static const char *profile_paths[] = {
 #define DEBUG_FILE_ACCESS
 #endif
 
-LOG_MODULE_REGISTER(softsim_fs_port, 4);
-// LOG_MODULE_REGISTER(softsim_fs_port, CONFIG_SOFTSIM_LOG_LEVEL);
+LOG_MODULE_REGISTER(softsim_fs_port, CONFIG_SOFTSIM_LOG_LEVEL);
 
 #define ALLOC_FILENAME CONFIG_SOFTSIM_FS_PATH_LEN
 
@@ -179,7 +179,7 @@ int init_fs() {
     if(!rcache.initialized) {
         rcache.initialized = true;
         bool static_cache = false;
-#if defined(PRECACHE_FILES) && defined(CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE)
+#if defined(PRECACHE_FILES) && defined(CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE) && defined(CACHE_ONLY_PRECACHED_FILES)
         static_cache = true;
 #endif
         f_cache_init(&rcache.cache, static_cache, CACHE_ENTRIES, &fs_cache_storage_funcs, true);
