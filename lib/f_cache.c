@@ -356,10 +356,19 @@ int f_cache_fopen(struct cache_ctx *cache, struct cache_entry *entry)
    */
   if (entry->_cache_hits < 0xFF) entry->_cache_hits++;
 
+  // Reset internal read/write pointer
+  entry->_p = 0;
+
+
   /**
-   * File opened first time.
-   */
+    * File opened first time.
+    */
   if (!entry->_l) {
+    if(cache->storage_f->readall) {
+      /* Short cut for FS with large penality for opening files and reading sizes */
+      return cache->storage_f->readall(cache, entry, &entry->buf, &entry->_l);
+    }
+
     int rc = cache->storage_f->length(cache, entry);
     if (rc < 0) {
       return -EINVAL;
@@ -367,9 +376,6 @@ int f_cache_fopen(struct cache_ctx *cache, struct cache_entry *entry)
       entry->_l = rc;
     }
   }
-
-  // Reset internal read/write pointer
-  entry->_p = 0;
 
   // Guarentee buffer contains valid data
   return f_cache_read_to_cache(cache, entry);
@@ -399,6 +405,7 @@ void f_cache_close(struct cache_ctx *cache)
   }
 }
 
+/* Expects name to be preallocated by the f_cache_alloc */
 int f_cache_create_entry(struct cache_ctx *cache, uint16_t key, char *name, uint16_t flags, struct cache_entry **out_entry)
 {
   struct ss_list *dirs = &cache->file_list;

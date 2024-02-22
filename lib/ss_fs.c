@@ -333,6 +333,49 @@ int impl_port_remove(const char *path) {
   return 0;
 }
 
+int impl_port_size(impl_port_FILE fp)
+{
+  struct ss_fs_file *f = fp;
+  long offset = fs_tell(&f->file);
+  if(offset < 0) {
+    return 0;
+  }
+  int rc = fs_seek(&f->file, 0, FS_SEEK_END);
+  if(rc) {
+    return 0;
+  }
+  long size = fs_tell(&f->file);
+  if(size < 0) {
+    return 0;
+  }
+  rc = fs_seek(&f->file, offset, FS_SEEK_SET);
+  if(rc) {
+    return 0;
+  }
+  return size;
+}
+
+int impl_port_stat(const char *path)
+{
+  uint32_t start = k_uptime_get_32();
+  struct fs_dirent ent;
+  const size_t prefLen = sizeof(CONFIG_SOFTSIM_FS_BACKEND_PREFIX)-1;
+  char file_path[CONFIG_SOFTSIM_FS_PATH_LEN] = CONFIG_SOFTSIM_FS_BACKEND_PREFIX;
+  strncpy(file_path+prefLen, path, sizeof(file_path)-prefLen);
+
+
+  int rc = fs_stat(file_path, &ent);
+  uint32_t end = k_uptime_get_32();
+  LOG_WRN("Stat duration: %u", end-start);
+  if(rc) {
+    return rc;
+  }
+  if(ent.type != FS_DIR_ENTRY_FILE) {
+    return -ENOENT;
+  }
+  return ent.size;
+}
+
 // very unlike to be invoked tbh
 int impl_port_rmdir(const char *path) {
   int rc = fs_unlink(path);

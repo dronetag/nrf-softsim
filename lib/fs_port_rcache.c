@@ -105,6 +105,31 @@ static int port_fs_cache_entry_write(struct cache_ctx *ctx, struct cache_entry *
     return len;
 }
 
+
+static int port_fs_cache_entry_readall(struct cache_ctx *ctx, struct cache_entry *entry, void **buffer, size_t *len)
+{
+    ARG_UNUSED(ctx);
+    FCACHE_LOG_DBG("FCache readall: %s", entry->name);
+    impl_port_FILE f = impl_port_fopen(entry->name, "r");
+    if(f == NULL) {
+        return -EINVAL;
+    }
+    int rc = impl_port_size(f);
+    if(rc < 0) {
+        return rc;
+    }
+    *len = rc;
+    *buffer = f_cache_alloc(ctx, *len);
+    if(*buffer == NULL) {
+        return -ENOMEM;
+    }
+
+    rc = impl_port_fread(*buffer, *len, 1, f);
+    impl_port_fclose(f);
+    return rc;
+}
+
+
 static int port_fs_cache_entry_read(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len)
 {
     ARG_UNUSED(ctx);
@@ -124,21 +149,11 @@ static uint16_t port_fs_cache_entry_length(struct cache_ctx *ctx, struct cache_e
     FCACHE_LOG_DBG("FCache length: %s", entry->name);
     /* TODO: Handle errors? */
     /* Open seek tell */
-    impl_port_FILE f = impl_port_fopen(entry->name, "r");
-    if(f == NULL) {
-        return 0;
+    int rc = impl_port_size(entry->name);
+    if(rc >= 0) {
+        return rc;
     }
-    int rc = impl_port_fseek(f, 0, SEEK_END);
-    if(rc) {
-        return 0;
-    }
-    long size = impl_port_ftell(f);
-    impl_port_fclose(f);
-
-    if(size >= 0) {
-        return size;
-    }
-    LOG_ERR("Tell failed: %d", (int)size);
+    LOG_ERR("FS Size failed: %d", (int)rc);
     return 0;
 }
 
@@ -151,6 +166,7 @@ static int port_fs_cache_entry_remove(struct cache_ctx *ctx, struct cache_entry 
 
 struct cache_strorage_funcs fs_cache_storage_funcs = {
     .read = port_fs_cache_entry_read,
+    .readall = port_fs_cache_entry_readall,
     .write = port_fs_cache_entry_write,
     .length = port_fs_cache_entry_length,
     .remove = port_fs_cache_entry_remove

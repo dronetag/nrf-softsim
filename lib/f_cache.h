@@ -28,6 +28,7 @@ typedef void* (*cache_entry_alloc_cb)(size_t len);
 typedef void (*cache_entry_free_cb)(void *);
 typedef int (*cache_entry_write_cb)(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len);
 typedef int (*cache_entry_read_cb)(struct cache_ctx *ctx, struct cache_entry *entry, void *buffer, size_t len);
+typedef int (*cache_entry_readall_cb)(struct cache_ctx *ctx, struct cache_entry *entry, void **buffer, size_t *len);
 typedef int (*cache_entry_remove_cb)(struct cache_ctx *ctx, struct cache_entry *entry);
 typedef uint16_t (*cache_entry_length_cb)(struct cache_ctx *ctx, struct cache_entry *entry);
 
@@ -36,6 +37,7 @@ struct cache_strorage_funcs {
     cache_entry_free_cb free;
     cache_entry_write_cb write;
     cache_entry_read_cb read;
+    cache_entry_readall_cb readall;
     cache_entry_remove_cb remove;
     cache_entry_length_cb length;
 };

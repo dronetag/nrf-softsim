@@ -19,5 +19,7 @@ int impl_init_fs();
 int impl_deinit_fs();
 int impl_port_check_provisioned();
 int impl_port_provision(struct ss_profile *profile);
+int impl_port_size(impl_port_FILE);
+int impl_port_stat(const char *);
 
 #endif /* IMPL_FS_impl_port_H */
