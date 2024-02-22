@@ -11,8 +11,10 @@
 #include "impl_fs_port.h"
 #include "f_cache.h"
 
+#define CACHE_ENTRIES 20
+#define PRECACHE_FILES
 
-// LOG_MODULE_REGISTER(softsim_fs_port, 4);
+#include "../littlefs/scripts/ss_static_files.h"
 LOG_MODULE_REGISTER(softsim_fs_port, CONFIG_SOFTSIM_LOG_LEVEL);
 
 #define ALLOC_FILENAME CONFIG_SOFTSIM_FS_PATH_LEN
@@ -24,6 +26,7 @@ struct rcache_file {
 };
 
 struct rcache_ctx {
+    bool initialized;
     struct cache_ctx cache;
 };
 
@@ -107,8 +110,37 @@ struct cache_strorage_funcs fs_cache_storage_funcs = {
 };
 
 int init_fs() {
-    f_cache_init(&rcache.cache, &fs_cache_storage_funcs, true);
-    return impl_init_fs();
+    int rc;
+    rc = impl_init_fs();
+
+    if(!rcache.initialized) {
+        rcache.initialized = true;
+        bool static_cache = false;
+#if defined(PRECACHE_FILES) && defined(CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE)
+        static_cache = true;
+#endif
+        f_cache_init(&rcache.cache, static_cache, CACHE_ENTRIES, &fs_cache_storage_funcs, true);
+#if defined(PRECACHE_FILES) && defined(CONFIG_SOFTSIM_TEMPLATE_GENERATION_CODE)
+        if(nrf_softsim_check_provisioned()) {
+            LOG_INF("Caching files start");
+            /* Files already ordered by the cache hit frequency */
+            int cached_files = MIN(onomondo_sf_files_len, CACHE_ENTRIES);
+            for(int i = 0; i < MIN(onomondo_sf_files_len, CACHE_ENTRIES); i++) {
+                LOG_INF("Caching file: %s %d/%d", onomondo_sf_files[i].name, i+1, cached_files);
+                /* Why fopen is not const ??? who knows */
+                port_FILE f = port_fopen(onomondo_sf_files[i].name, "r");
+                if(f == NULL) {
+                    LOG_ERR("Failed to precache file: %s", onomondo_sf_files[i].name);
+                }
+                if(f) {
+                    port_fclose(f);
+                }
+            }
+            LOG_INF("Caching end");
+        }
+#endif
+    }
+    return rc;
 }
 
 /*

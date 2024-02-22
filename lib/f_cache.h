@@ -40,10 +40,16 @@ struct cache_strorage_funcs {
     cache_entry_length_cb length;
 };
 
+#define CACHE_MAX_ENTRIES (0xFFFFFFFF)
+
 struct cache_ctx {
     struct ss_list file_list;
     struct cache_strorage_funcs *storage_f;
+    /* Whether the cache should free the entries upon replacement */
     bool free_entries;
+    /* Whether the cache should reuse entries . When enabled cache will reject any entries above max_entries*/
+    bool static_cache;
+    size_t max_entries;
 };
 
 /**
@@ -52,7 +58,7 @@ struct cache_ctx {
  */
 struct cache_entry *f_cache_find_buffer(struct cache_entry *entry, struct cache_ctx *cache);
 struct cache_entry *f_cache_find_by_name(const char *name, struct cache_ctx *cache);
-void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs, bool free_entries);
+void f_cache_init(struct cache_ctx *cache, bool static_cache, size_t max_entries, struct cache_strorage_funcs *funcs, bool free_entries);
 void *f_cache_alloc(struct cache_ctx *cache, size_t len);
 void f_cache_free(struct cache_ctx *cache, void *ptr);
 bool f_cache_empty(struct cache_ctx *cache);

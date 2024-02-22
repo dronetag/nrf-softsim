@@ -6,13 +6,12 @@
 #include <onomondo/softsim/list.h>
 #include <onomondo/softsim/mem.h>
 
-#define MAX_ENTRIES (10)
 
 LOG_MODULE_REGISTER(softsim_fcache, CONFIG_SOFTSIM_LOG_LEVEL);
 
 // #define PROFILE_DATA
 
-void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs, bool free_entries)
+void f_cache_init(struct cache_ctx *cache, bool static_cache, size_t max_entries, struct cache_strorage_funcs *funcs, bool free_entries)
 {
     assert(funcs->length);
     assert(funcs->read);
@@ -21,6 +20,8 @@ void f_cache_init(struct cache_ctx *cache, struct cache_strorage_funcs *funcs, b
     ss_list_init(&cache->file_list);
     cache->storage_f = funcs;
     cache->free_entries = free_entries;
+    cache->max_entries = max_entries;
+    cache->static_cache = static_cache;
 }
 
 bool f_cache_empty(struct cache_ctx *cache)
@@ -53,6 +54,10 @@ int f_cache_read_to_cache(struct cache_ctx *cache, struct cache_entry *entry) {
     size_t buffer_size = 0;
 
     if (tmp) {
+        if(cache->static_cache) {
+            /* Cache should not try to free any entry. When files are pre-cached only frequently used files stays in the cache */
+            return -ENOMEM;
+        }
         if (tmp->_b_dirty) {
             LOG_DBG("Cache entry %s is dirty, writing to NVS\n", tmp->name);
             cache->storage_f->write(cache, tmp, tmp->buf, tmp->_l);
@@ -138,7 +143,7 @@ struct cache_entry *f_cache_find_buffer(struct cache_entry *entry,
   }
 
   // let cache grow to MAX_ENTRIES
-  if (cached_entries < MAX_ENTRIES)
+  if (cached_entries < cache_ctx->max_entries)
     return NULL;
 
   if (no_hits_no_write_existing_buff)

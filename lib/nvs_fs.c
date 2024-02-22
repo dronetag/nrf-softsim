@@ -103,7 +103,7 @@ struct cache_strorage_funcs fs_cache_storage_funcs = {
 int load_dirs() {
     uint8_t *data = NULL;
     size_t len = 0;
-    f_cache_init(&fs_cache, &fs_cache_storage_funcs);
+    f_cache_init(&fs_cache, false, 20, &fs_cache_storage_funcs, false);
 
     int rc = nvs_read(&fs, DIR_ID, NULL, 0);
     if(rc < 0) {
