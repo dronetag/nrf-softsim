@@ -13,10 +13,18 @@
 // #define PROFILE_PORT_IMPL
 // #define PROFILE_PUTC
 #ifdef PROFILE_PORT_IMPL
-#define LOG_PORT_CALL() LOG_DBG("%s", __func__)
+
+#ifdef LOG_FUNC_NAME_PREFIX_DBG
+#define LOG_PORT_CALL() LOG_DBG("%s Called", __func__)
 #define LOG_PORT_CALL_LONG(x, fmt, ...) LOG_DBG("%s rc: %ld - " fmt, __func__, x, __VA_ARGS__)
 #define LOG_PORT_CALL_INT(x, fmt, ...) LOG_DBG("%s rc: %d - " fmt, __func__, x, __VA_ARGS__)
 #define LOG_PORT_CALL_PTR(x, fmt, ...) LOG_DBG("%s rc: %p - " fmt, __func__, x, __VA_ARGS__)
+#else
+#define LOG_PORT_CALL() LOG_DBG("Called")
+#define LOG_PORT_CALL_LONG(x, fmt, ...) LOG_DBG("rc: %ld - " fmt, x, __VA_ARGS__)
+#define LOG_PORT_CALL_INT(x, fmt, ...) LOG_DBG("rc: %d - " fmt, x, __VA_ARGS__)
+#define LOG_PORT_CALL_PTR(x, fmt, ...) LOG_DBG("rc: %p - " fmt, x, __VA_ARGS__)
+#endif
 #else
 #define LOG_PORT_CALL()
 #define LOG_PORT_CALL_LONG(x, fmt, ...)
