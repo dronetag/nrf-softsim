@@ -1,23 +1,37 @@
 import os
 import re
+from typing import List, Tuple
 
 HEADER  = """
 #include "ss_static_files.h"
 """
 
+def order_files(files, cache_hits : List[Tuple[str, int]]):
+    def find_cache_hit(file):
+        for name, hit in cache_hits:
+            if file == name:
+                return hit
+        return 0
 
-def to_c_array(path='files', out_path='ss_static_files.c'):
+    files = sorted(files, key=lambda x: find_cache_hit(x), reverse=True)
+    return files
+    
+
+def to_c_array(path='files', cache_hits_file='softsim-fs-stats.log', out_path='ss_static_files.c'):
     # walk the files directory and get a list of all files and subdirectories
     s = HEADER
 
+    with open(cache_hits_file, 'r') as file:
+        cache_hits_str = file.readlines()
+        cache_hits_strs = [hit.split() for hit in cache_hits_str]
+        cache_hits = [(hit[1], int(hit[0])) for hit in cache_hits_strs]
 
-    files, directories = get_dirs_and_files(path)    
+    files, directories = get_dirs_and_files(path)
+    files = order_files(files, cache_hits)  
 
     s += 'const sf_dir_t onomondo_sf_dirs_arr[] = {\n'  
     ds = []
     for d in directories:
-        if d == '':
-            continue    
         ds.append( f'{{.name = "{d}"}}')
     s += ', \n'.join(ds) + '\n};\n' 
     
@@ -63,9 +77,11 @@ def get_dirs_and_files(path):
 
     for root, d_names, f_names in os.walk(path):
         current_dir = root.split('files')[-1]
-        directories.append(current_dir)
+        if(len(current_dir) > 0):
+            directories.append(current_dir)
         for file in f_names:
             files.append(current_dir+'/'+file)
     return files, directories
-to_c_array('../files')
+
+to_c_array('../files', cache_hits_file='../softsim-fs-stats.log')
     
