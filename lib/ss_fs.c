@@ -240,9 +240,16 @@ impl_port_FILE impl_port_fopen(char *path, char *mode) {
   strncpy(file_path+prefLen, path, sizeof(file_path)-prefLen);
 
   FS_LOG_DBG("open path: %s, mode: %s", file_path, mode);
+  fs_mode_t f_m = FS_O_READ;
+  if(mode[0] != 'r') {
+    f_m = FS_O_WRITE | FS_O_CREATE;
+  }
+  if(mode[0] == 'r' || strlen(mode) > 1) {
+    f_m = FS_O_RDWR | FS_O_CREATE;
+  }
 
-  /* TODO: Parse mode */
-  rc = fs_open(&f->file, file_path, FS_O_RDWR | FS_O_CREATE);
+  rc = fs_open(&f->file, file_path, f_m);
+  uint32_t end = k_uptime_get_32();
   if(rc) {
     LOG_ERR("Failed to open file: %s", file_path);
     SS_FREE(f);
