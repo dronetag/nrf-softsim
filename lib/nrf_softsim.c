@@ -87,6 +87,7 @@ int onomondo_init(void) {
 
   k_work_queue_start(&softsim_work_q, softsim_stack_area, K_THREAD_STACK_SIZEOF(softsim_stack_area), SOFTSIM_PRIORITY,
                      NULL);
+  k_thread_name_set(&softsim_work_q.thread, "softsim_workq");
 
   ctx = ss_new_ctx();  // TODO: consider dropping this call here
 
